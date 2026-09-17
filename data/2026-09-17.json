@@ -1,0 +1,70 @@
+{
+  "fecha": "2026-09-17",
+  "omie": {
+    "fuente": "OMIE",
+    "fecha_texto": null,
+    "precio_medio_es": 127.41,
+    "precio_maximo_es": 244.11,
+    "precio_minimo_es": 0.51,
+    "volumen_gwh_es": 485.4,
+    "url": "https://www.omie.es/es/spot-hoy"
+  },
+  "mibgas": {
+    "fuente": "MIBGAS",
+    "producto": "PVB D+1",
+    "fecha_entrega": "18/09",
+    "precio_eur_mwh": 81.83,
+    "precio_intradiario_hoy": 78.78,
+    "diario_raw": [
+      [
+        "17/09",
+        "80,24"
+      ],
+      [
+        "18/09",
+        "81,83"
+      ],
+      [
+        "19/09",
+        "80,06"
+      ]
+    ],
+    "url": "https://www.mibgas.es/es/market-results"
+  },
+  "omip": {
+    "fuente": "OMIP",
+    "spel_base_spot": 127.41,
+    "q4_26": 145.0,
+    "yr_27": 88.4,
+    "yr_28": 61.0,
+    "meses": {
+      "Oct-26": 136.25,
+      "Nov-26": 151.81,
+      "Dec-26": 147.17,
+      "Jan-27": 160.0,
+      "Feb-27": 132.22,
+      "Mar-27": 86.33
+    },
+    "url": "https://www.omip.pt/es/plazo-hoy"
+  },
+  "investing": [
+    {
+      "fuente": "Investing.com",
+      "activo": "Brent",
+      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/brent-oil",
+      "url": "https://www.investing.com/commodities/brent-oil"
+    },
+    {
+      "fuente": "Investing.com",
+      "activo": "TTF",
+      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/dutch-ttf-gas-c1-futures",
+      "url": "https://www.investing.com/commodities/dutch-ttf-gas-c1-futures"
+    },
+    {
+      "fuente": "Investing.com",
+      "activo": "CO2",
+      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/carbon-emissions",
+      "url": "https://www.investing.com/commodities/carbon-emissions"
+    }
+  ]
+}
