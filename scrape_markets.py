@@ -29,16 +29,42 @@ from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    import cloudscraper
+except ImportError:  # por si alguien lo ejecuta sin instalar requirements.txt
+    cloudscraper = None
+
 MADRID_TZ = ZoneInfo("Europe/Madrid")
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-    )
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 TIMEOUT = 30
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+# Investing.com bloquea (403) peticiones "normales" desde IPs de datacenter
+# (como las de GitHub Actions). cloudscraper resuelve el reto básico de
+# Cloudflare imitando mejor un navegador real. Si aun así sigue fallando,
+# no rompemos el resto del pipeline (ver es_hora_de_ejecutar / main).
+_investing_scraper = None
+
+
+def get_investing_scraper():
+    global _investing_scraper
+    if _investing_scraper is None:
+        if cloudscraper is not None:
+            _investing_scraper = cloudscraper.create_scraper(
+                browser={"browser": "chrome", "platform": "windows", "mobile": False}
+            )
+        else:
+            _investing_scraper = requests.Session()
+            _investing_scraper.headers.update(HEADERS)
+    return _investing_scraper
 
 
 def to_float(value: str):
@@ -182,7 +208,10 @@ INVESTING_SOURCES = {
 
 
 def scrape_investing_asset(nombre: str, url: str) -> dict:
-    text = get_text(url)
+    scraper = get_investing_scraper()
+    resp = scraper.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
 
     m_precio = re.search(
         r"current price of ([\w .\-]+?) futures is ([\d.,]+), with a previous close of ([\d.,]+)",
@@ -207,7 +236,25 @@ def scrape_investing_asset(nombre: str, url: str) -> dict:
 
 
 def scrape_investing() -> list:
-    return [scrape_investing_asset(nombre, url) for nombre, url in INVESTING_SOURCES.items()]
+    resultados = []
+    for nombre, url in INVESTING_SOURCES.items():
+        try:
+            resultados.append(scrape_investing_asset(nombre, url))
+        except Exception as e:
+            print(f"[AVISO] Fallo al scrapear Investing/{nombre}: {e}")
+            resultados.append({"fuente": "Investing.com", "activo": nombre, "error": str(e), "url": url})
+    return resultados
+
+
+def scrape_con_fallback(nombre_fuente: str, funcion):
+    """Ejecuta una función de scraping y, si falla, devuelve un dict de error
+    en vez de interrumpir todo el script (para que las demás fuentes se
+    guarden igualmente)."""
+    try:
+        return funcion()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear {nombre_fuente}: {e}")
+        return {"fuente": nombre_fuente, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -280,10 +327,10 @@ def main():
 
     resultado = {
         "fecha": fecha_iso,
-        "omie": scrape_omie(),
-        "mibgas": scrape_mibgas(),
-        "omip": scrape_omip(),
-        "investing": scrape_investing(),
+        "omie": scrape_con_fallback("OMIE", scrape_omie),
+        "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
+        "omip": scrape_con_fallback("OMIP", scrape_omip),
+        "investing": scrape_investing(),  # ya tiene su propio try/except por activo
     }
 
     guardar_snapshot(resultado, fecha_iso)
