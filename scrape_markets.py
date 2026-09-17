@@ -244,11 +244,36 @@ def scrape_co2_investing() -> dict:
     url = "https://www.investing.com/commodities/carbon-emissions"
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent=HEADERS["User-Agent"], locale="en-US")
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
+        )
+        context = browser.new_context(
+            user_agent=HEADERS["User-Agent"],
+            locale="en-US",
+            viewport={"width": 1366, "height": 900},
+        )
+        # Oculta la señal más habitual que delata a Playwright/Selenium
+        context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
+        page = context.new_page()
         try:
-            page.goto(url, timeout=45000, wait_until="domcontentloaded")
-            page.wait_for_timeout(4000)  # da tiempo a que cargue el precio y pase el reto anti-bot
+            page.goto(url, timeout=45000, wait_until="networkidle")
+
+            # Cierra el banner de cookies si aparece (si no, puede tapar contenido)
+            for selector in ["#onetrust-accept-btn-handler", "button:has-text('Accept')"]:
+                try:
+                    page.click(selector, timeout=3000)
+                    break
+                except Exception:
+                    pass
+
+            page.wait_for_timeout(5000)
             text = page.inner_text("body")
         finally:
             browser.close()
@@ -259,7 +284,12 @@ def scrape_co2_investing() -> dict:
         re.IGNORECASE,
     )
     if not m_precio:
-        raise ValueError("No se encontró el patrón de precio en la página de Investing.com (CO2)")
+        # Guardamos un fragmento del texto recibido para poder depurar por qué
+        # no matchea (p.ej. si es una pantalla de verificación anti-bot).
+        raise ValueError(
+            "No se encontró el patrón de precio en la página de Investing.com (CO2). "
+            f"Primeros 300 caracteres recibidos: {text[:300]!r}"
+        )
 
     return {
         "fuente": "Investing.com (Playwright)",
