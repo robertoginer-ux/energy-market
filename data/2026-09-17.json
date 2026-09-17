@@ -52,7 +52,7 @@
       "fuente": "Yahoo Finance",
       "activo": "Brent",
       "ticker": "BZ=F",
-      "precio_actual": 99.81,
+      "precio_actual": 99.47,
       "precio_cierre_anterior": 100.76,
       "moneda": "USD",
       "url": "https://finance.yahoo.com/quote/BZ=F/"
@@ -67,13 +67,9 @@
       "url": "https://finance.yahoo.com/quote/TTF=F/"
     },
     {
-      "fuente": "Yahoo Finance",
+      "fuente": "Investing.com (Playwright)",
       "activo": "CO2",
-      "ticker": "^ICEEUA",
-      "precio_actual": 1366.3165,
-      "precio_cierre_anterior": 1380.7069,
-      "moneda": "EUR",
-      "url": "https://finance.yahoo.com/quote/^ICEEUA/"
+      "error": "No se encontró el patrón de precio en la página de Investing.com (CO2)"
     }
   ]
 }
