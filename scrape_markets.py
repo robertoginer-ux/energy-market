@@ -1,5 +1,5 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF/CO2 (Investing.com).
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF/CO2 (Yahoo Finance).
 
 Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
 (ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
@@ -8,8 +8,9 @@ Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora d
     python scrape_markets.py
 
 El script:
-  1. Descarga cada página pública (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares sobre el texto plano de la página.
+  1. Descarga cada página/endpoint público (sin login, sin API key).
+  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP) o
+     parseando el JSON público de Yahoo Finance (Brent/TTF/CO2).
   3. Guarda un snapshot diario en data/YYYY-MM-DD.json
   4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
 
@@ -29,11 +30,6 @@ from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 
-try:
-    import cloudscraper
-except ImportError:  # por si alguien lo ejecuta sin instalar requirements.txt
-    cloudscraper = None
-
 MADRID_TZ = ZoneInfo("Europe/Madrid")
 HEADERS = {
     "User-Agent": (
@@ -46,25 +42,6 @@ HEADERS = {
 TIMEOUT = 30
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-
-# Investing.com bloquea (403) peticiones "normales" desde IPs de datacenter
-# (como las de GitHub Actions). cloudscraper resuelve el reto básico de
-# Cloudflare imitando mejor un navegador real. Si aun así sigue fallando,
-# no rompemos el resto del pipeline (ver es_hora_de_ejecutar / main).
-_investing_scraper = None
-
-
-def get_investing_scraper():
-    global _investing_scraper
-    if _investing_scraper is None:
-        if cloudscraper is not None:
-            _investing_scraper = cloudscraper.create_scraper(
-                browser={"browser": "chrome", "platform": "windows", "mobile": False}
-            )
-        else:
-            _investing_scraper = requests.Session()
-            _investing_scraper.headers.update(HEADERS)
-    return _investing_scraper
 
 
 def to_float(value: str):
@@ -198,51 +175,53 @@ def scrape_omip() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Investing.com (Brent, TTF, CO2)
+# Brent, TTF y CO2 (EUA) vía Yahoo Finance
 # ---------------------------------------------------------------------------
-INVESTING_SOURCES = {
-    "Brent": "https://www.investing.com/commodities/brent-oil",
-    "TTF": "https://www.investing.com/commodities/dutch-ttf-gas-c1-futures",
-    "CO2": "https://www.investing.com/commodities/carbon-emissions",
+# Investing.com bloquea (403) las peticiones desde IPs de datacenter como las
+# de GitHub Actions, incluso con cloudscraper. Yahoo Finance expone un
+# endpoint JSON público (no oficial, pero ampliamente usado) que es mucho más
+# permisivo. Si algún día Yahoo también empieza a bloquear, este es el sitio
+# a revisar.
+YAHOO_SOURCES = {
+    "Brent": "BZ=F",       # Brent Crude Oil Last Day Financial Futures (USD/barril)
+    "TTF": "TTF=F",        # Dutch TTF Natural Gas Calendar (EUR/MWh)
+    "CO2": "^ICEEUA",      # ICE EUA Carbon Futures (EUR/tonelada)
 }
 
 
-def scrape_investing_asset(nombre: str, url: str) -> dict:
-    scraper = get_investing_scraper()
-    resp = scraper.get(url, headers=HEADERS, timeout=TIMEOUT)
-    resp.raise_for_status()
-    text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
+def scrape_yahoo_asset(nombre: str, symbol: str) -> dict:
+    from urllib.parse import quote
 
-    m_precio = re.search(
-        r"current price of ([\w .\-]+?) futures is ([\d.,]+), with a previous close of ([\d.,]+)",
-        text,
-        re.IGNORECASE,
-    )
-    m_rango = re.search(
-        r"trading range for [\w .\-]+? futures is between ([\d.,]+) and ([\d.,]+)",
-        text,
-        re.IGNORECASE,
-    )
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}"
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+
+    result = (data.get("chart") or {}).get("result") or []
+    if not result:
+        raise ValueError(f"Yahoo Finance no devolvió datos para {symbol}: {data.get('chart', {}).get('error')}")
+
+    meta = result[0].get("meta", {})
 
     return {
-        "fuente": "Investing.com",
+        "fuente": "Yahoo Finance",
         "activo": nombre,
-        "precio_actual": to_float(m_precio.group(2)) if m_precio else None,
-        "precio_cierre_anterior": to_float(m_precio.group(3)) if m_precio else None,
-        "rango_dia_min": to_float(m_rango.group(1)) if m_rango else None,
-        "rango_dia_max": to_float(m_rango.group(2)) if m_rango else None,
-        "url": url,
+        "ticker": symbol,
+        "precio_actual": meta.get("regularMarketPrice"),
+        "precio_cierre_anterior": meta.get("previousClose") or meta.get("chartPreviousClose"),
+        "moneda": meta.get("currency"),
+        "url": f"https://finance.yahoo.com/quote/{symbol}/",
     }
 
 
-def scrape_investing() -> list:
+def scrape_yahoo() -> list:
     resultados = []
-    for nombre, url in INVESTING_SOURCES.items():
+    for nombre, symbol in YAHOO_SOURCES.items():
         try:
-            resultados.append(scrape_investing_asset(nombre, url))
+            resultados.append(scrape_yahoo_asset(nombre, symbol))
         except Exception as e:
-            print(f"[AVISO] Fallo al scrapear Investing/{nombre}: {e}")
-            resultados.append({"fuente": "Investing.com", "activo": nombre, "error": str(e), "url": url})
+            print(f"[AVISO] Fallo al scrapear Yahoo Finance/{nombre}: {e}")
+            resultados.append({"fuente": "Yahoo Finance", "activo": nombre, "error": str(e), "ticker": symbol})
     return resultados
 
 
@@ -291,8 +270,8 @@ def append_history(resultado: dict, fecha_iso: str):
     for mes, precio in omip.get("meses", {}).items():
         filas.append(["OMIP", f"mes_{mes}", precio])
 
-    for activo in resultado["investing"]:
-        filas.append(["Investing", activo["activo"], activo.get("precio_actual")])
+    for activo in resultado["yahoo"]:
+        filas.append(["Yahoo", activo["activo"], activo.get("precio_actual")])
 
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -330,7 +309,7 @@ def main():
         "omie": scrape_con_fallback("OMIE", scrape_omie),
         "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
         "omip": scrape_con_fallback("OMIP", scrape_omip),
-        "investing": scrape_investing(),  # ya tiene su propio try/except por activo
+        "yahoo": scrape_yahoo(),  # ya tiene su propio try/except por activo
     }
 
     guardar_snapshot(resultado, fecha_iso)
