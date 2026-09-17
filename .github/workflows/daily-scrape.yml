@@ -1,0 +1,44 @@
+name: Scraping diario de mercados energéticos
+
+on:
+  schedule:
+    # GitHub Actions solo admite cron en UTC (sin cambio de hora).
+    # Disparamos dos veces para cubrir invierno (CET, UTC+1) y verano (CEST, UTC+2);
+    # el propio script (scrape_markets.py) comprueba la hora real en Madrid y
+    # descarta la ejecución que no caiga a las 7:00h en punto.
+    - cron: '0 5 * * *'   # 7:00 en horario de verano (CEST)
+    - cron: '0 6 * * *'   # 7:00 en horario de invierno (CET)
+  workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar scraper
+        env:
+          # Si se lanza manualmente (workflow_dispatch), forzamos la ejecución
+          # aunque no sean exactamente las 7:00h.
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: python scrape_markets.py
+
+      - name: Commit y push de los datos nuevos
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "Snapshot de mercados $(date -u +%Y-%m-%d)"
+          git push
