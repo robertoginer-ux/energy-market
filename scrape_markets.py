@@ -136,4 +136,238 @@ def scrape_mibgas() -> dict:
     }
 
 
-# --------------------------------------------
+# ---------------------------------------------------------------------------
+# OMIP
+# ---------------------------------------------------------------------------
+def scrape_omip() -> dict:
+    url = "https://www.omip.pt/es/plazo-hoy"
+    text = get_text(url)
+
+    # Nos quedamos solo con el bloque de electricidad España (FTB), que es el
+    # primero de la página, antes de que empiece el bloque de Portugal (PTEL BASE).
+    idx_fin = text.find("PTEL BASE")
+    ftb_section = text[:idx_fin] if idx_fin != -1 else text
+
+    def buscar_precio(etiqueta: str):
+        m = re.search(re.escape(etiqueta) + r"\s+€([\-\d.,]+)", ftb_section)
+        return to_float(m.group(1)) if m else None
+
+    spel_base_spot = buscar_precio("SPEL BASE")
+    q4_26 = buscar_precio("Q4-26")
+    yr_27 = buscar_precio("YR-27")
+    yr_28 = buscar_precio("YR-28")
+
+    # Meses individuales cotizando actualmente (rolling, típicamente 3-6 meses vista)
+    meses_regex = re.findall(r"\b([A-Z][a-z]{2}-\d{2})\s+€([\-\d.,]+)", ftb_section)
+    # Quitamos duplicados manteniendo el primer valor de cada mes
+    meses = {}
+    for mes, precio in meses_regex:
+        if mes not in meses:
+            meses[mes] = to_float(precio)
+
+    return {
+        "fuente": "OMIP",
+        "spel_base_spot": spel_base_spot,
+        "q4_26": q4_26,
+        "yr_27": yr_27,  # equivalente a "Cal-27"
+        "yr_28": yr_28,  # equivalente a "Cal-28"
+        "meses": meses,  # dict {"Oct-26": 138.75, "Nov-26": 156.0, ...}
+        "url": url,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Brent y TTF vía Yahoo Finance
+# ---------------------------------------------------------------------------
+# Investing.com bloquea (403) las peticiones desde IPs de datacenter como las
+# de GitHub Actions. Yahoo Finance expone un endpoint JSON público (no
+# oficial, pero ampliamente usado) que es mucho más permisivo.
+YAHOO_SOURCES = {
+    "Brent": "BZ=F",       # Brent Crude Oil Last Day Financial Futures (USD/barril)
+    "TTF": "TTF=F",        # Dutch TTF Natural Gas Calendar (EUR/MWh)
+    # CO2 NO va aquí: ^ICEEUA es un índice en puntos, no el precio real del
+    # contrato ICE EUA en €/tonelada (el mismo que investing.com muestra como
+    # CFI2Z6). Ese dato se obtiene con scrape_co2_investing() más abajo.
+}
+
+
+def scrape_yahoo_asset(nombre: str, symbol: str) -> dict:
+    from urllib.parse import quote
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}"
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+
+    result = (data.get("chart") or {}).get("result") or []
+    if not result:
+        raise ValueError(f"Yahoo Finance no devolvió datos para {symbol}: {data.get('chart', {}).get('error')}")
+
+    meta = result[0].get("meta", {})
+
+    return {
+        "fuente": "Yahoo Finance",
+        "activo": nombre,
+        "ticker": symbol,
+        "precio_actual": meta.get("regularMarketPrice"),
+        "precio_cierre_anterior": meta.get("previousClose") or meta.get("chartPreviousClose"),
+        "moneda": meta.get("currency"),
+        "url": f"https://finance.yahoo.com/quote/{symbol}/",
+    }
+
+
+def scrape_yahoo() -> list:
+    resultados = []
+    for nombre, symbol in YAHOO_SOURCES.items():
+        try:
+            resultados.append(scrape_yahoo_asset(nombre, symbol))
+        except Exception as e:
+            print(f"[AVISO] Fallo al scrapear Yahoo Finance/{nombre}: {e}")
+            resultados.append({"fuente": "Yahoo Finance", "activo": nombre, "error": str(e), "ticker": symbol})
+    return resultados
+
+
+# ---------------------------------------------------------------------------
+# CO2 (EUA) vía Investing.com, con navegador real (Playwright)
+# ---------------------------------------------------------------------------
+# El contrato exacto que necesitamos (equivalente a "CFI2Z6" en Investing) no
+# está disponible gratis en Yahoo Finance. Investing.com bloquea (403) las
+# peticiones HTTP normales desde IPs de datacenter, pero con un navegador
+# real headless (que ejecuta el JavaScript de verdad) hay bastante más
+# probabilidad de pasar el filtro. Aun así, esto sigue siendo best-effort:
+# si Investing.com refuerza el bloqueo a nivel de IP (no solo JS), esto
+# también podría fallar — en ese caso el error queda registrado y las demás
+# fuentes se guardan igualmente.
+def scrape_co2_investing() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    url = "https://www.investing.com/commodities/carbon-emissions"
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(user_agent=HEADERS["User-Agent"], locale="en-US")
+        try:
+            page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            page.wait_for_timeout(4000)  # da tiempo a que cargue el precio y pase el reto anti-bot
+            text = page.inner_text("body")
+        finally:
+            browser.close()
+
+    m_precio = re.search(
+        r"current price of ([\w .\-]+?) futures is ([\d.,]+), with a previous close of ([\d.,]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not m_precio:
+        raise ValueError("No se encontró el patrón de precio en la página de Investing.com (CO2)")
+
+    return {
+        "fuente": "Investing.com (Playwright)",
+        "activo": "CO2",
+        "precio_actual": to_float(m_precio.group(2)),
+        "precio_cierre_anterior": to_float(m_precio.group(3)),
+        "url": url,
+    }
+
+
+def scrape_co2_safe() -> dict:
+    try:
+        return scrape_co2_investing()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear CO2 (Investing.com/Playwright): {e}")
+        return {"fuente": "Investing.com (Playwright)", "activo": "CO2", "error": str(e)}
+
+
+def scrape_con_fallback(nombre_fuente: str, funcion):
+    """Ejecuta una función de scraping y, si falla, devuelve un dict de error
+    en vez de interrumpir todo el script (para que las demás fuentes se
+    guarden igualmente)."""
+    try:
+        return funcion()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear {nombre_fuente}: {e}")
+        return {"fuente": nombre_fuente, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Guardado de resultados
+# ---------------------------------------------------------------------------
+def guardar_snapshot(resultado: dict, fecha_iso: str):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    path = os.path.join(DATA_DIR, f"{fecha_iso}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(resultado, f, ensure_ascii=False, indent=2)
+    print(f"[OK] Snapshot guardado en {path}")
+
+
+def append_history(resultado: dict, fecha_iso: str):
+    """Añade filas planas (una por dato relevante) a data/history.csv"""
+    path = os.path.join(DATA_DIR, "history.csv")
+    existe = os.path.exists(path)
+
+    filas = []
+    omie = resultado["omie"]
+    filas.append(["OMIE", "precio_medio_es", omie.get("precio_medio_es")])
+    filas.append(["OMIE", "precio_maximo_es", omie.get("precio_maximo_es")])
+    filas.append(["OMIE", "precio_minimo_es", omie.get("precio_minimo_es")])
+    filas.append(["OMIE", "volumen_gwh_es", omie.get("volumen_gwh_es")])
+
+    mibgas = resultado["mibgas"]
+    filas.append(["MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh")])
+
+    omip = resultado["omip"]
+    filas.append(["OMIP", "spel_base_spot", omip.get("spel_base_spot")])
+    filas.append(["OMIP", "q4_26", omip.get("q4_26")])
+    filas.append(["OMIP", "yr_27", omip.get("yr_27")])
+    filas.append(["OMIP", "yr_28", omip.get("yr_28")])
+    for mes, precio in omip.get("meses", {}).items():
+        filas.append(["OMIP", f"mes_{mes}", precio])
+
+    for activo in resultado["yahoo"]:
+        filas.append(["Yahoo", activo["activo"], activo.get("precio_actual")])
+
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not existe:
+            writer.writerow(["fecha", "fuente", "variable", "valor"])
+        for fuente, variable, valor in filas:
+            writer.writerow([fecha_iso, fuente, variable, valor])
+    print(f"[OK] {len(filas)} filas añadidas a {path}")
+
+
+# ---------------------------------------------------------------------------
+# Control de horario (Madrid 7:00h, con margen para el cron en UTC)
+# ---------------------------------------------------------------------------
+def es_hora_de_ejecutar(forzar: bool) -> bool:
+    if forzar:
+        return True
+    ahora_madrid = datetime.now(MADRID_TZ)
+    # El workflow dispara el cron a las 5:00 y 6:00 UTC para cubrir el cambio de
+    # hora (CET/CEST). Solo continuamos si son las 7 en punto (rango 6:45-7:15)
+    # hora de Madrid, para no duplicar la ejecución.
+    return ahora_madrid.hour == 7 and ahora_madrid.minute < 30
+
+
+def main():
+    forzar = "--force" in sys.argv or os.environ.get("FORCE_RUN") == "1"
+
+    if not es_hora_de_ejecutar(forzar):
+        print("No son las 7:00h en Madrid todavía (o ya ha pasado el margen). Saliendo.")
+        return
+
+    fecha_iso = datetime.now(MADRID_TZ).date().isoformat()
+
+    resultado = {
+        "fecha": fecha_iso,
+        "omie": scrape_con_fallback("OMIE", scrape_omie),
+        "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
+        "omip": scrape_con_fallback("OMIP", scrape_omip),
+        "yahoo": scrape_yahoo() + [scrape_co2_safe()],  # cada uno con su propio try/except
+    }
+
+    guardar_snapshot(resultado, fecha_iso)
+    append_history(resultado, fecha_iso)
+
+
+if __name__ == "__main__":
+    main()
