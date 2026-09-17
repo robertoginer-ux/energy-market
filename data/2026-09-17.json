@@ -47,24 +47,33 @@
     },
     "url": "https://www.omip.pt/es/plazo-hoy"
   },
-  "investing": [
+  "yahoo": [
     {
-      "fuente": "Investing.com",
+      "fuente": "Yahoo Finance",
       "activo": "Brent",
-      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/brent-oil",
-      "url": "https://www.investing.com/commodities/brent-oil"
+      "ticker": "BZ=F",
+      "precio_actual": 99.81,
+      "precio_cierre_anterior": 100.76,
+      "moneda": "USD",
+      "url": "https://finance.yahoo.com/quote/BZ=F/"
     },
     {
-      "fuente": "Investing.com",
+      "fuente": "Yahoo Finance",
       "activo": "TTF",
-      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/dutch-ttf-gas-c1-futures",
-      "url": "https://www.investing.com/commodities/dutch-ttf-gas-c1-futures"
+      "ticker": "TTF=F",
+      "precio_actual": 77.58,
+      "precio_cierre_anterior": 78.03,
+      "moneda": "EUR",
+      "url": "https://finance.yahoo.com/quote/TTF=F/"
     },
     {
-      "fuente": "Investing.com",
+      "fuente": "Yahoo Finance",
       "activo": "CO2",
-      "error": "403 Client Error: Forbidden for url: https://www.investing.com/commodities/carbon-emissions",
-      "url": "https://www.investing.com/commodities/carbon-emissions"
+      "ticker": "^ICEEUA",
+      "precio_actual": 1366.3165,
+      "precio_cierre_anterior": 1380.7069,
+      "moneda": "EUR",
+      "url": "https://finance.yahoo.com/quote/^ICEEUA/"
     }
   ]
 }
