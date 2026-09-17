@@ -1,18 +1,17 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
-y CO2/EUA (Investing.com vía navegador real).
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF (Yahoo Finance).
+CO2 (EUA) queda pendiente — ver nota más abajo en scrape_co2_safe().
 
 Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
 (ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
 
     pip install -r requirements.txt
-    playwright install --with-deps chromium
     python scrape_markets.py --force
 
 El script:
   1. Descarga cada página/endpoint público (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP), el JSON
-     público de Yahoo Finance (Brent/TTF), o un navegador headless (CO2/Investing.com).
+  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP) o el
+     JSON público de Yahoo Finance (Brent/TTF).
   3. Guarda un snapshot diario en data/YYYY-MM-DD.json
   4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
 
@@ -185,9 +184,6 @@ def scrape_omip() -> dict:
 YAHOO_SOURCES = {
     "Brent": "BZ=F",       # Brent Crude Oil Last Day Financial Futures (USD/barril)
     "TTF": "TTF=F",        # Dutch TTF Natural Gas Calendar (EUR/MWh)
-    # CO2 NO va aquí: ^ICEEUA es un índice en puntos, no el precio real del
-    # contrato ICE EUA en €/tonelada (el mismo que investing.com muestra como
-    # CFI2Z6). Ese dato se obtiene con scrape_co2_investing() más abajo.
 }
 
 
@@ -228,84 +224,31 @@ def scrape_yahoo() -> list:
 
 
 # ---------------------------------------------------------------------------
-# CO2 (EUA) vía Investing.com, con navegador real (Playwright)
+# CO2 (EUA) — PENDIENTE
 # ---------------------------------------------------------------------------
-# El contrato exacto que necesitamos (equivalente a "CFI2Z6" en Investing) no
-# está disponible gratis en Yahoo Finance. Investing.com bloquea (403) las
-# peticiones HTTP normales desde IPs de datacenter, pero con un navegador
-# real headless (que ejecuta el JavaScript de verdad) hay bastante más
-# probabilidad de pasar el filtro. Aun así, esto sigue siendo best-effort:
-# si Investing.com refuerza el bloqueo a nivel de IP (no solo JS), esto
-# también podría fallar — en ese caso el error queda registrado y las demás
-# fuentes se guardan igualmente.
-def scrape_co2_investing() -> dict:
-    from playwright.sync_api import sync_playwright
-
-    url = "https://www.investing.com/commodities/carbon-emissions"
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
-        )
-        context = browser.new_context(
-            user_agent=HEADERS["User-Agent"],
-            locale="en-US",
-            viewport={"width": 1366, "height": 900},
-        )
-        # Oculta la señal más habitual que delata a Playwright/Selenium
-        context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
-        page = context.new_page()
-        try:
-            page.goto(url, timeout=45000, wait_until="networkidle")
-
-            # Cierra el banner de cookies si aparece (si no, puede tapar contenido)
-            for selector in ["#onetrust-accept-btn-handler", "button:has-text('Accept')"]:
-                try:
-                    page.click(selector, timeout=3000)
-                    break
-                except Exception:
-                    pass
-
-            page.wait_for_timeout(5000)
-            text = page.inner_text("body")
-        finally:
-            browser.close()
-
-    m_precio = re.search(
-        r"current price of ([\w .\-]+?) futures is ([\d.,]+), with a previous close of ([\d.,]+)",
-        text,
-        re.IGNORECASE,
-    )
-    if not m_precio:
-        # Guardamos un fragmento del texto recibido para poder depurar por qué
-        # no matchea (p.ej. si es una pantalla de verificación anti-bot).
-        raise ValueError(
-            "No se encontró el patrón de precio en la página de Investing.com (CO2). "
-            f"Primeros 300 caracteres recibidos: {text[:300]!r}"
-        )
-
-    return {
-        "fuente": "Investing.com (Playwright)",
-        "activo": "CO2",
-        "precio_actual": to_float(m_precio.group(2)),
-        "precio_cierre_anterior": to_float(m_precio.group(3)),
-        "url": url,
-    }
-
-
+# Investing.com bloquea (403) a nivel de IP/edge las peticiones desde GitHub
+# Actions, tanto con requests simple como con un navegador real (Playwright) —
+# no es un reto de JavaScript que se pueda "resolver", es un bloqueo de la
+# infraestructura de red. Yahoo Finance tampoco tiene gratis el contrato
+# exacto (^ICEEUA es un índice en puntos, no el precio en €/tonelada).
+#
+# Opciones para retomar esto en el futuro, si se quiere:
+#   1. Un servicio de scraping con proxies residenciales (ScraperAPI,
+#      ScrapingBee...), que sí sortean bloqueos por IP de datacenter.
+#   2. Barchart.com tiene el mismo contrato exacto (ticker CKZ26 = ICE EUA
+#      Futures Dec'26) pero su precio se carga por JavaScript, así que
+#      requeriría también un navegador real — sin garantía de que no
+#      bloqueen igual.
+#
+# Por ahora dejamos el campo marcado explícitamente como pendiente en vez de
+# fallar silenciosamente o inventar un número.
 def scrape_co2_safe() -> dict:
-    try:
-        return scrape_co2_investing()
-    except Exception as e:
-        print(f"[AVISO] Fallo al scrapear CO2 (Investing.com/Playwright): {e}")
-        return {"fuente": "Investing.com (Playwright)", "activo": "CO2", "error": str(e)}
+    return {
+        "fuente": "Pendiente",
+        "activo": "CO2",
+        "precio_actual": None,
+        "nota": "Investing.com bloquea IPs de datacenter (GitHub Actions); sin fuente gratuita alternativa confirmada todavía.",
+    }
 
 
 def scrape_con_fallback(nombre_fuente: str, funcion):
@@ -392,7 +335,7 @@ def main():
         "omie": scrape_con_fallback("OMIE", scrape_omie),
         "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
         "omip": scrape_con_fallback("OMIP", scrape_omip),
-        "yahoo": scrape_yahoo() + [scrape_co2_safe()],  # cada uno con su propio try/except
+        "yahoo": scrape_yahoo() + [scrape_co2_safe()],
     }
 
     guardar_snapshot(resultado, fecha_iso)
