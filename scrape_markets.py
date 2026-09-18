@@ -12,8 +12,12 @@ El script:
   1. Descarga cada página/endpoint público (sin login, sin API key).
   2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP) o el
      JSON público de Yahoo Finance (Brent/TTF).
-  3. Guarda un snapshot diario en data/YYYY-MM-DD.json
-  4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
+  3. Calcula la variación (absoluta y %) de cada variable respecto al día
+     anterior, usando el histórico ya guardado.
+  4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
+     lista con valor + variación de cada variable — la usan también
+     update_google_sheet.py y send_email.py).
+  5. Añade esas mismas filas a data/history.csv.
 
 IMPORTANTE: estas páginas son HTML público que puede cambiar de estructura en cualquier
 momento. Si algún valor sale como None, lo primero es volver a mirar el texto real de la
@@ -251,6 +255,118 @@ def scrape_co2_safe() -> dict:
     }
 
 
+def col_to_letter(idx: int) -> str:
+    """0 -> 'A', 1 -> 'B', ..., 25 -> 'Z', 26 -> 'AA', ..."""
+    idx += 1
+    letters = ""
+    while idx > 0:
+        idx, rem = divmod(idx - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
+
+def migrar_historico_si_hace_falta():
+    """Si history.csv ya existe en el formato antiguo (sin columnas de
+    variación), lo reescribe añadiendo esas 2 columnas vacías para las filas
+    históricas, sin perder los datos ya guardados."""
+    path = os.path.join(DATA_DIR, "history.csv")
+    if not os.path.exists(path):
+        return
+    with open(path, newline="", encoding="utf-8") as f:
+        filas = list(csv.reader(f))
+    if not filas:
+        return
+    cabecera_nueva = ["fecha", "fuente", "variable", "valor", "variacion_abs", "variacion_pct"]
+    if filas[0] == cabecera_nueva:
+        return  # ya está migrado
+    nuevas = [cabecera_nueva]
+    for fila in filas[1:]:
+        fila = fila + [""] * (6 - len(fila))
+        nuevas.append(fila[:6])
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows(nuevas)
+    print("[OK] history.csv migrado al nuevo formato (con columnas de variación)")
+
+
+def cargar_historico() -> dict:
+    """Carga history.csv en un dict {(fuente, variable): [(fecha, valor), ...]}."""
+    path = os.path.join(DATA_DIR, "history.csv")
+    historico = {}
+    if not os.path.exists(path):
+        return historico
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                valor = float(row["valor"]) if row.get("valor") else None
+            except ValueError:
+                valor = None
+            historico.setdefault((row["fuente"], row["variable"]), []).append((row["fecha"], valor))
+    return historico
+
+
+def valor_anterior(historico: dict, fuente: str, variable: str, fecha_hoy: str):
+    """Valor más reciente de (fuente, variable) con fecha anterior a fecha_hoy."""
+    registros = [(f, v) for f, v in historico.get((fuente, variable), []) if f < fecha_hoy and v is not None]
+    if not registros:
+        return None
+    registros.sort(key=lambda x: x[0])
+    return registros[-1][1]
+
+
+def calcular_variacion(valor_hoy, valor_ayer):
+    if valor_hoy is None or valor_ayer is None:
+        return None, None
+    abs_ = valor_hoy - valor_ayer
+    pct = (abs_ / valor_ayer * 100) if valor_ayer else None
+    return abs_, pct
+
+
+def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) -> list:
+    """Lista plana [{fuente, variable, valor, valor_anterior, variacion_abs,
+    variacion_pct}, ...] — la usan el CSV histórico, el snapshot JSON, el
+    Google Sheet y el email, todos a partir de la misma fuente de verdad."""
+    filas = []
+
+    def agregar(fuente, variable, valor):
+        v_ayer = valor_anterior(historico, fuente, variable, fecha_iso)
+        v_abs, v_pct = calcular_variacion(valor, v_ayer)
+        filas.append(
+            {
+                "fuente": fuente,
+                "variable": variable,
+                "valor": valor,
+                "valor_anterior": v_ayer,
+                "variacion_abs": v_abs,
+                "variacion_pct": v_pct,
+            }
+        )
+
+    omie = resultado_fuentes["omie"]
+    agregar("OMIE", "precio_medio_es", omie.get("precio_medio_es"))
+    agregar("OMIE", "precio_maximo_es", omie.get("precio_maximo_es"))
+    agregar("OMIE", "precio_minimo_es", omie.get("precio_minimo_es"))
+    agregar("OMIE", "volumen_gwh_es", omie.get("volumen_gwh_es"))
+
+    mibgas = resultado_fuentes["mibgas"]
+    agregar("MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh"))
+
+    omip = resultado_fuentes["omip"]
+    agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
+    agregar("OMIP", "q4_26", omip.get("q4_26"))
+    agregar("OMIP", "yr_27", omip.get("yr_27"))
+    agregar("OMIP", "yr_28", omip.get("yr_28"))
+    for mes, precio in omip.get("meses", {}).items():
+        agregar("OMIP", f"mes_{mes}", precio)
+
+    for activo in resultado_fuentes["yahoo"]:
+        agregar("Yahoo", activo["activo"], activo.get("precio_actual"))
+
+    return filas
+
+
+# ---------------------------------------------------------------------------
+# Guardado de resultados
+# ---------------------------------------------------------------------------
 def scrape_con_fallback(nombre_fuente: str, funcion):
     """Ejecuta una función de scraping y, si falla, devuelve un dict de error
     en vez de interrumpir todo el script (para que las demás fuentes se
@@ -262,9 +378,6 @@ def scrape_con_fallback(nombre_fuente: str, funcion):
         return {"fuente": nombre_fuente, "error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# Guardado de resultados
-# ---------------------------------------------------------------------------
 def guardar_snapshot(resultado: dict, fecha_iso: str):
     os.makedirs(DATA_DIR, exist_ok=True)
     path = os.path.join(DATA_DIR, f"{fecha_iso}.json")
@@ -273,38 +386,27 @@ def guardar_snapshot(resultado: dict, fecha_iso: str):
     print(f"[OK] Snapshot guardado en {path}")
 
 
-def append_history(resultado: dict, fecha_iso: str):
-    """Añade filas planas (una por dato relevante) a data/history.csv"""
+def append_history(filas: list, fecha_iso: str):
+    """Añade filas planas (una por variable) a data/history.csv, incluyendo
+    la variación absoluta y porcentual respecto al día anterior."""
     path = os.path.join(DATA_DIR, "history.csv")
     existe = os.path.exists(path)
-
-    filas = []
-    omie = resultado["omie"]
-    filas.append(["OMIE", "precio_medio_es", omie.get("precio_medio_es")])
-    filas.append(["OMIE", "precio_maximo_es", omie.get("precio_maximo_es")])
-    filas.append(["OMIE", "precio_minimo_es", omie.get("precio_minimo_es")])
-    filas.append(["OMIE", "volumen_gwh_es", omie.get("volumen_gwh_es")])
-
-    mibgas = resultado["mibgas"]
-    filas.append(["MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh")])
-
-    omip = resultado["omip"]
-    filas.append(["OMIP", "spel_base_spot", omip.get("spel_base_spot")])
-    filas.append(["OMIP", "q4_26", omip.get("q4_26")])
-    filas.append(["OMIP", "yr_27", omip.get("yr_27")])
-    filas.append(["OMIP", "yr_28", omip.get("yr_28")])
-    for mes, precio in omip.get("meses", {}).items():
-        filas.append(["OMIP", f"mes_{mes}", precio])
-
-    for activo in resultado["yahoo"]:
-        filas.append(["Yahoo", activo["activo"], activo.get("precio_actual")])
 
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not existe:
-            writer.writerow(["fecha", "fuente", "variable", "valor"])
-        for fuente, variable, valor in filas:
-            writer.writerow([fecha_iso, fuente, variable, valor])
+            writer.writerow(["fecha", "fuente", "variable", "valor", "variacion_abs", "variacion_pct"])
+        for fila in filas:
+            writer.writerow(
+                [
+                    fecha_iso,
+                    fila["fuente"],
+                    fila["variable"],
+                    fila["valor"],
+                    fila["variacion_abs"],
+                    fila["variacion_pct"],
+                ]
+            )
     print(f"[OK] {len(filas)} filas añadidas a {path}")
 
 
@@ -330,16 +432,22 @@ def main():
 
     fecha_iso = datetime.now(MADRID_TZ).date().isoformat()
 
-    resultado = {
-        "fecha": fecha_iso,
+    migrar_historico_si_hace_falta()
+    historico = cargar_historico()
+
+    resultado_fuentes = {
         "omie": scrape_con_fallback("OMIE", scrape_omie),
         "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
         "omip": scrape_con_fallback("OMIP", scrape_omip),
-        "yahoo": scrape_yahoo() + [scrape_co2_safe()],
+        "yahoo": scrape_yahoo() + [scrape_co2_safe()],  # cada uno con su propio try/except
     }
 
+    filas = construir_filas(resultado_fuentes, historico, fecha_iso)
+
+    resultado = {"fecha": fecha_iso, **resultado_fuentes, "filas": filas}
+
     guardar_snapshot(resultado, fecha_iso)
-    append_history(resultado, fecha_iso)
+    append_history(filas, fecha_iso)
 
 
 if __name__ == "__main__":
