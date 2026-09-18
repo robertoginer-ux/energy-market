@@ -150,7 +150,7 @@ def construir_html(resultado: dict) -> str:
             <td style="padding:18px 32px 28px 32px;">
               <p style="color:#A49FC6;font-size:11px;margin:0;line-height:1.5;">
                 Generado automáticamente cada día a las 7:00h.<br>
-                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance.
+                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance · sendeco2.com.
               </p>
             </td>
           </tr>
