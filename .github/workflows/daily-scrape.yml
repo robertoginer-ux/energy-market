@@ -35,6 +35,16 @@ jobs:
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
         run: python scrape_markets.py
 
+      - name: Actualizar Google Sheet
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python update_google_sheet.py
+
+      - name: Enviar email diario
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python send_email.py
+
       - name: Commit y push de los datos nuevos
         run: |
           git config user.name "github-actions[bot]"
