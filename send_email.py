@@ -89,7 +89,7 @@ def construir_html(resultado: dict) -> str:
     for fila in filas:
         grupos.setdefault(fila["fuente"], []).append(fila)
 
-    orden_fuentes = ["OMIE", "MIBGAS", "OMIP", "Yahoo"]
+    orden_fuentes = ["OMIE", "MIBGAS", "OMIP", "Yahoo", "Sendeco2"]
     secciones_html = ""
     for fuente in orden_fuentes:
         if fuente not in grupos:
