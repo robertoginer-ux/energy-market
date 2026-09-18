@@ -52,8 +52,8 @@
       "fuente": "Yahoo Finance",
       "activo": "Brent",
       "ticker": "BZ=F",
-      "precio_actual": 103.69,
-      "precio_cierre_anterior": 104.82,
+      "precio_actual": 98.22,
+      "precio_cierre_anterior": 99.93,
       "moneda": "USD",
       "url": "https://finance.yahoo.com/quote/BZ=F/"
     },
@@ -71,6 +71,152 @@
       "activo": "CO2",
       "precio_actual": null,
       "nota": "Investing.com bloquea IPs de datacenter (GitHub Actions); sin fuente gratuita alternativa confirmada todavía."
+    }
+  ],
+  "filas": [
+    {
+      "fuente": "OMIE",
+      "variable": "precio_medio_es",
+      "valor": 124.78,
+      "valor_anterior": 127.41,
+      "variacion_abs": -2.6299999999999955,
+      "variacion_pct": -2.0642021819323406
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "precio_maximo_es",
+      "valor": 228.78,
+      "valor_anterior": 244.11,
+      "variacion_abs": -15.330000000000013,
+      "variacion_pct": -6.279955757650245
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "precio_minimo_es",
+      "valor": 0.0,
+      "valor_anterior": 0.51,
+      "variacion_abs": -0.51,
+      "variacion_pct": -100.0
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "volumen_gwh_es",
+      "valor": 464.0,
+      "valor_anterior": 485.4,
+      "variacion_abs": -21.399999999999977,
+      "variacion_pct": -4.4087350638648495
+    },
+    {
+      "fuente": "MIBGAS",
+      "variable": "pvb_d1",
+      "valor": 78.74,
+      "valor_anterior": 81.83,
+      "variacion_abs": -3.0900000000000034,
+      "variacion_pct": -3.7761212269338915
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "spel_base_spot",
+      "valor": 124.78,
+      "valor_anterior": 127.41,
+      "variacion_abs": -2.6299999999999955,
+      "variacion_pct": -2.0642021819323406
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "q4_26",
+      "valor": 142.85,
+      "valor_anterior": 145.0,
+      "variacion_abs": -2.1500000000000057,
+      "variacion_pct": -1.482758620689659
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "yr_27",
+      "valor": 86.8,
+      "valor_anterior": 88.4,
+      "variacion_abs": -1.6000000000000085,
+      "variacion_pct": -1.8099547511312313
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "yr_28",
+      "valor": 61.0,
+      "valor_anterior": 61.0,
+      "variacion_abs": 0.0,
+      "variacion_pct": 0.0
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Oct-26",
+      "valor": 135.1,
+      "valor_anterior": 136.25,
+      "variacion_abs": -1.1500000000000057,
+      "variacion_pct": -0.8440366972477106
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Nov-26",
+      "valor": 149.6,
+      "valor_anterior": 151.81,
+      "variacion_abs": -2.210000000000008,
+      "variacion_pct": -1.4557670772676425
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Dec-26",
+      "valor": 144.08,
+      "valor_anterior": 147.17,
+      "variacion_abs": -3.089999999999975,
+      "variacion_pct": -2.099612692804223
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Jan-27",
+      "valor": 154.0,
+      "valor_anterior": 160.0,
+      "variacion_abs": -6.0,
+      "variacion_pct": -3.75
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Feb-27",
+      "valor": 134.44,
+      "valor_anterior": 132.22,
+      "variacion_abs": 2.219999999999999,
+      "variacion_pct": 1.6790198154590825
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Mar-27",
+      "valor": 87.42,
+      "valor_anterior": 86.33,
+      "variacion_abs": 1.0900000000000034,
+      "variacion_pct": 1.2625970114676281
+    },
+    {
+      "fuente": "Yahoo",
+      "variable": "Brent",
+      "valor": 98.22,
+      "valor_anterior": 99.5,
+      "variacion_abs": -1.2800000000000011,
+      "variacion_pct": -1.2864321608040212
+    },
+    {
+      "fuente": "Yahoo",
+      "variable": "TTF",
+      "valor": 77.015,
+      "valor_anterior": 77.58,
+      "variacion_abs": -0.5649999999999977,
+      "variacion_pct": -0.7282804846609923
+    },
+    {
+      "fuente": "Yahoo",
+      "variable": "CO2",
+      "valor": null,
+      "valor_anterior": 1366.3165,
+      "variacion_abs": null,
+      "variacion_pct": null
     }
   ]
 }
