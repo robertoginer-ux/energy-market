@@ -1,0 +1,76 @@
+{
+  "fecha": "2026-09-18",
+  "omie": {
+    "fuente": "OMIE",
+    "fecha_texto": null,
+    "precio_medio_es": 124.78,
+    "precio_maximo_es": 228.78,
+    "precio_minimo_es": 0.0,
+    "volumen_gwh_es": 464.0,
+    "url": "https://www.omie.es/es/spot-hoy"
+  },
+  "mibgas": {
+    "fuente": "MIBGAS",
+    "producto": "PVB D+1",
+    "fecha_entrega": "19/09",
+    "precio_eur_mwh": 78.74,
+    "precio_intradiario_hoy": 77.25,
+    "diario_raw": [
+      [
+        "18/09",
+        "78,81"
+      ],
+      [
+        "19/09",
+        "78,74"
+      ],
+      [
+        "20/09",
+        "78,67"
+      ]
+    ],
+    "url": "https://www.mibgas.es/es/market-results"
+  },
+  "omip": {
+    "fuente": "OMIP",
+    "spel_base_spot": 124.78,
+    "q4_26": 142.85,
+    "yr_27": 86.8,
+    "yr_28": 61.0,
+    "meses": {
+      "Oct-26": 135.1,
+      "Nov-26": 149.6,
+      "Dec-26": 144.08,
+      "Jan-27": 154.0,
+      "Feb-27": 134.44,
+      "Mar-27": 87.42
+    },
+    "url": "https://www.omip.pt/es/plazo-hoy"
+  },
+  "yahoo": [
+    {
+      "fuente": "Yahoo Finance",
+      "activo": "Brent",
+      "ticker": "BZ=F",
+      "precio_actual": 103.69,
+      "precio_cierre_anterior": 104.82,
+      "moneda": "USD",
+      "url": "https://finance.yahoo.com/quote/BZ=F/"
+    },
+    {
+      "fuente": "Yahoo Finance",
+      "activo": "TTF",
+      "ticker": "TTF=F",
+      "precio_actual": 77.015,
+      "precio_cierre_anterior": 76.352,
+      "moneda": "EUR",
+      "url": "https://finance.yahoo.com/quote/TTF=F/"
+    },
+    {
+      "fuente": "Pendiente",
+      "activo": "CO2",
+      "precio_actual": null,
+      "nota": "Investing.com bloquea IPs de datacenter (GitHub Actions); sin fuente gratuita alternativa confirmada todavía."
+    }
+  ]
+}
