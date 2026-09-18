@@ -1,6 +1,6 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF (Yahoo Finance).
-CO2 (EUA) queda pendiente — ver nota más abajo en scrape_co2_safe().
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
+y CO2/EUA (Sendeco2).
 
 Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
 (ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
@@ -10,8 +10,8 @@ Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora d
 
 El script:
   1. Descarga cada página/endpoint público (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP) o el
-     JSON público de Yahoo Finance (Brent/TTF).
+  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP), el
+     JSON público de Yahoo Finance (Brent/TTF), o el CSV público de Sendeco2 (CO2).
   3. Calcula la variación (absoluta y %) de cada variable respecto al día
      anterior, usando el histórico ya guardado.
   4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
@@ -228,31 +228,44 @@ def scrape_yahoo() -> list:
 
 
 # ---------------------------------------------------------------------------
-# CO2 (EUA) — PENDIENTE
+# CO2 (EUA) vía Sendeco2
 # ---------------------------------------------------------------------------
-# Investing.com bloquea (403) a nivel de IP/edge las peticiones desde GitHub
-# Actions, tanto con requests simple como con un navegador real (Playwright) —
-# no es un reto de JavaScript que se pueda "resolver", es un bloqueo de la
-# infraestructura de red. Yahoo Finance tampoco tiene gratis el contrato
-# exacto (^ICEEUA es un índice en puntos, no el precio en €/tonelada).
-#
-# Opciones para retomar esto en el futuro, si se quiere:
-#   1. Un servicio de scraping con proxies residenciales (ScraperAPI,
-#      ScrapingBee...), que sí sortean bloqueos por IP de datacenter.
-#   2. Barchart.com tiene el mismo contrato exacto (ticker CKZ26 = ICE EUA
-#      Futures Dec'26) pero su precio se carga por JavaScript, así que
-#      requeriría también un navegador real — sin garantía de que no
-#      bloqueen igual.
-#
-# Por ahora dejamos el campo marcado explícitamente como pendiente en vez de
-# fallar silenciosamente o inventar un número.
-def scrape_co2_safe() -> dict:
+# sendeco2.com publica un CSV público con el precio diario de referencia del
+# EUA (derechos de emisión), sin bloqueos de IP ni necesidad de navegador.
+# No es exactamente el mismo contrato que investing.com (CFI2Z6, un futuro
+# concreto), sino el precio de referencia diario que usa el mercado, pero es
+# la fuente gratuita más fiable que hemos encontrado.
+def scrape_co2() -> dict:
+    year = datetime.now(MADRID_TZ).year
+    url = f"https://www.sendeco2.com/site_sendeco/service/download-csv.php?year={year}"
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    resp.encoding = "iso-8859-15"
+
+    lineas = [l for l in resp.text.strip().splitlines() if l.strip()]
+    filas_csv = lineas[1:]  # se salta la cabecera "Fecha;EUA;CER;SPREAD..."
+    if not filas_csv:
+        raise ValueError("El CSV de Sendeco2 no tiene filas de datos")
+
+    ultima = filas_csv[-1].split(";")
+    fecha_dato = ultima[0]  # formato DD-MM-YYYY
+    precio_eua = to_float(ultima[1])
+
     return {
-        "fuente": "Pendiente",
+        "fuente": "Sendeco2",
         "activo": "CO2",
-        "precio_actual": None,
-        "nota": "Investing.com bloquea IPs de datacenter (GitHub Actions); sin fuente gratuita alternativa confirmada todavía.",
+        "precio_actual": precio_eua,
+        "fecha_dato": fecha_dato,
+        "url": "https://www.sendeco2.com/es/precios-co2",
     }
+
+
+def scrape_co2_safe() -> dict:
+    try:
+        return scrape_co2()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear CO2 (Sendeco2): {e}")
+        return {"fuente": "Sendeco2", "activo": "CO2", "precio_actual": None, "error": str(e)}
 
 
 def col_to_letter(idx: int) -> str:
@@ -361,6 +374,9 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
     for activo in resultado_fuentes["yahoo"]:
         agregar("Yahoo", activo["activo"], activo.get("precio_actual"))
 
+    co2 = resultado_fuentes["co2"]
+    agregar("Sendeco2", "CO2", co2.get("precio_actual"))
+
     return filas
 
 
@@ -439,7 +455,8 @@ def main():
         "omie": scrape_con_fallback("OMIE", scrape_omie),
         "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
         "omip": scrape_con_fallback("OMIP", scrape_omip),
-        "yahoo": scrape_yahoo() + [scrape_co2_safe()],  # cada uno con su propio try/except
+        "yahoo": scrape_yahoo(),
+        "co2": scrape_co2_safe(),
     }
 
     filas = construir_filas(resultado_fuentes, historico, fecha_iso)
