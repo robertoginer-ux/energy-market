@@ -2,8 +2,8 @@
 Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
 y CO2/EUA (Sendeco2).
 
-Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
-(ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
+Diseñado para ejecutarse vía GitHub Actions todos los días (ver
+.github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
 
     pip install -r requirements.txt
     python scrape_markets.py --force
@@ -18,6 +18,10 @@ El script:
      lista con valor + variación de cada variable — la usan también
      update_google_sheet.py y send_email.py).
   5. Añade esas mismas filas a data/history.csv.
+
+Solo se ejecuta una vez al día: si ya existe el snapshot de hoy, no repite
+(esto es importante porque GitHub Actions puede retrasar el cron varias
+horas, y no queremos que eso impida la ejecución del día).
 
 IMPORTANTE: estas páginas son HTML público que puede cambiar de estructura en cualquier
 momento. Si algún valor sale como None, lo primero es volver a mirar el texto real de la
@@ -427,26 +431,28 @@ def append_history(filas: list, fecha_iso: str):
 
 
 # ---------------------------------------------------------------------------
-# Control de horario (Madrid 7:00h, con margen para el cron en UTC)
+# Control de ejecución: una vez al día, sea cuando sea que dispare el cron
 # ---------------------------------------------------------------------------
-def es_hora_de_ejecutar(forzar: bool) -> bool:
-    if forzar:
-        return True
-    ahora_madrid = datetime.now(MADRID_TZ)
-    # El workflow dispara el cron a las 5:00 y 6:00 UTC para cubrir el cambio de
-    # hora (CET/CEST). Solo continuamos si son las 7 en punto (rango 6:45-7:15)
-    # hora de Madrid, para no duplicar la ejecución.
-    return ahora_madrid.hour == 7 and ahora_madrid.minute < 30
+# GitHub Actions puede retrasar los cron varias horas en repos con poca
+# actividad (es un comportamiento documentado de GitHub, no un fallo
+# nuestro). Antes comprobábamos "¿son las 7:00h en Madrid?", pero si el cron
+# se disparaba tarde (p.ej. a las 11:17h), el script se cancelaba pensando
+# que aún no tocaba, y ese día no se ejecutaba nada. Ahora, en su lugar,
+# comprobamos simplemente si ya existe un snapshot de hoy: si no existe,
+# ejecutamos (sea la hora que sea); si ya existe, no repetimos (para evitar
+# duplicar el email si los dos cron del día llegan a disparase el mismo día).
+def ya_se_ejecuto_hoy(fecha_iso: str) -> bool:
+    return os.path.exists(os.path.join(DATA_DIR, f"{fecha_iso}.json"))
 
 
 def main():
     forzar = "--force" in sys.argv or os.environ.get("FORCE_RUN") == "1"
 
-    if not es_hora_de_ejecutar(forzar):
-        print("No son las 7:00h en Madrid todavía (o ya ha pasado el margen). Saliendo.")
-        return
-
     fecha_iso = datetime.now(MADRID_TZ).date().isoformat()
+
+    if not forzar and ya_se_ejecuto_hoy(fecha_iso):
+        print(f"[INFO] Ya se generó el snapshot de hoy ({fecha_iso}); no se repite. Saliendo.")
+        return
 
     migrar_historico_si_hace_falta()
     historico = cargar_historico()
