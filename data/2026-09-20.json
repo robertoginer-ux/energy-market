@@ -1,0 +1,223 @@
+{
+  "fecha": "2026-09-20",
+  "omie": {
+    "fuente": "OMIE",
+    "fecha_texto": null,
+    "precio_medio_es": null,
+    "precio_maximo_es": null,
+    "precio_minimo_es": null,
+    "volumen_gwh_es": 402.8,
+    "url": "https://www.omie.es/es/spot-hoy"
+  },
+  "mibgas": {
+    "fuente": "MIBGAS",
+    "producto": "PVB D+1",
+    "fecha_entrega": "21/09",
+    "precio_eur_mwh": 81.66,
+    "precio_intradiario_hoy": 79.64,
+    "diario_raw": [
+      [
+        "20/09",
+        "81,20"
+      ],
+      [
+        "21/09",
+        "81,66"
+      ],
+      [
+        "22/09",
+        "81,40"
+      ]
+    ],
+    "url": "https://www.mibgas.es/es/market-results"
+  },
+  "omip": {
+    "fuente": "OMIP",
+    "spel_base_spot": 110.26,
+    "q4_26": 146.8,
+    "yr_27": 89.5,
+    "yr_28": 61.2,
+    "meses": {
+      "Oct-26": 139.0,
+      "Nov-26": 154.34,
+      "Dec-26": 147.31,
+      "Jan-27": 155.37,
+      "Feb-27": 135.63,
+      "Mar-27": 89.91
+    },
+    "url": "https://www.omip.pt/es/plazo-hoy"
+  },
+  "yahoo": [
+    {
+      "fuente": "Yahoo Finance",
+      "activo": "Brent",
+      "ticker": "BZ=F",
+      "precio_actual": 99.29,
+      "precio_cierre_anterior": 99.93,
+      "moneda": "USD",
+      "url": "https://finance.yahoo.com/quote/BZ=F/"
+    },
+    {
+      "fuente": "Yahoo Finance",
+      "activo": "TTF",
+      "ticker": "TTF=F",
+      "precio_actual": 79.518,
+      "precio_cierre_anterior": 76.352,
+      "moneda": "EUR",
+      "url": "https://finance.yahoo.com/quote/TTF=F/"
+    }
+  ],
+  "co2": {
+    "fuente": "Sendeco2",
+    "activo": "CO2",
+    "precio_actual": 85.24,
+    "fecha_dato": "17-09-2026",
+    "url": "https://www.sendeco2.com/es/precios-co2"
+  },
+  "filas": [
+    {
+      "fuente": "OMIE",
+      "variable": "precio_medio_es",
+      "valor": null,
+      "valor_anterior": 124.78,
+      "variacion_abs": null,
+      "variacion_pct": null
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "precio_maximo_es",
+      "valor": null,
+      "valor_anterior": 228.78,
+      "variacion_abs": null,
+      "variacion_pct": null
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "precio_minimo_es",
+      "valor": null,
+      "valor_anterior": 0.0,
+      "variacion_abs": null,
+      "variacion_pct": null
+    },
+    {
+      "fuente": "OMIE",
+      "variable": "volumen_gwh_es",
+      "valor": 402.8,
+      "valor_anterior": 464.0,
+      "variacion_abs": -61.19999999999999,
+      "variacion_pct": -13.189655172413792
+    },
+    {
+      "fuente": "MIBGAS",
+      "variable": "pvb_d1",
+      "valor": 81.66,
+      "valor_anterior": 78.74,
+      "variacion_abs": 2.9200000000000017,
+      "variacion_pct": 3.7084074168148358
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "spel_base_spot",
+      "valor": 110.26,
+      "valor_anterior": 124.78,
+      "variacion_abs": -14.519999999999996,
+      "variacion_pct": -11.63648020516108
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "q4_26",
+      "valor": 146.8,
+      "valor_anterior": 142.85,
+      "variacion_abs": 3.950000000000017,
+      "variacion_pct": 2.7651382569128575
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "yr_27",
+      "valor": 89.5,
+      "valor_anterior": 86.8,
+      "variacion_abs": 2.700000000000003,
+      "variacion_pct": 3.1105990783410173
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "yr_28",
+      "valor": 61.2,
+      "valor_anterior": 61.0,
+      "variacion_abs": 0.20000000000000284,
+      "variacion_pct": 0.32786885245902103
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Oct-26",
+      "valor": 139.0,
+      "valor_anterior": 135.1,
+      "variacion_abs": 3.9000000000000057,
+      "variacion_pct": 2.8867505551443418
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Nov-26",
+      "valor": 154.34,
+      "valor_anterior": 149.6,
+      "variacion_abs": 4.740000000000009,
+      "variacion_pct": 3.168449197860969
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Dec-26",
+      "valor": 147.31,
+      "valor_anterior": 144.08,
+      "variacion_abs": 3.2299999999999898,
+      "variacion_pct": 2.241810105496939
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Jan-27",
+      "valor": 155.37,
+      "valor_anterior": 154.0,
+      "variacion_abs": 1.3700000000000045,
+      "variacion_pct": 0.8896103896103926
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Feb-27",
+      "valor": 135.63,
+      "valor_anterior": 134.44,
+      "variacion_abs": 1.1899999999999977,
+      "variacion_pct": 0.8851532282058894
+    },
+    {
+      "fuente": "OMIP",
+      "variable": "mes_Mar-27",
+      "valor": 89.91,
+      "valor_anterior": 87.42,
+      "variacion_abs": 2.489999999999995,
+      "variacion_pct": 2.848318462594366
+    },
+    {
+      "fuente": "Yahoo",
+      "variable": "Brent",
+      "valor": 99.29,
+      "valor_anterior": 98.22,
+      "variacion_abs": 1.0700000000000074,
+      "variacion_pct": 1.089391162695996
+    },
+    {
+      "fuente": "Yahoo",
+      "variable": "TTF",
+      "valor": 79.518,
+      "valor_anterior": 77.015,
+      "variacion_abs": 2.503,
+      "variacion_pct": 3.250016230604428
+    },
+    {
+      "fuente": "Sendeco2",
+      "variable": "CO2",
+      "valor": 85.24,
+      "valor_anterior": null,
+      "variacion_abs": null,
+      "variacion_pct": null
+    }
+  ]
+}
