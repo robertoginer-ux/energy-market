@@ -84,8 +84,8 @@ def scrape_omie() -> dict:
 
     m_fecha = re.search(r"para el (\d{1,2}\s+[A-Za-zÀ-ÿ]+)", text)
     m_es = re.search(
-        r"Precio medio España\s+([\d.,]+)\s*€/MWh\s*Máximo\s+([\d.,]+)\s*€/MWh\s*"
-        r"Mínimo\s+([\d.,]+)\s*€/MWh",
+        r"Precio medio España\s+([\-\d.,]+)\s*€/MWh\s*Máximo\s+([\-\d.,]+)\s*€/MWh\s*"
+        r"Mínimo\s+([\-\d.,]+)\s*€/MWh",
         text,
     )
     m_vol = re.search(r"Volumen negociado España\s+([\d.,]+)", text)
