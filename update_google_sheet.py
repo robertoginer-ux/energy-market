@@ -163,7 +163,7 @@ def main():
 
     service.spreadsheets().values().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
-        body={"valueInputOption": "USER_ENTERED", "data": updates},
+        body={"valueInputOption": "RAW", "data": updates},
     ).execute()
     print(f"[OK] {len(updates)} celdas actualizadas en el Google Sheet para el {fecha_ddmmyyyy}")
 
