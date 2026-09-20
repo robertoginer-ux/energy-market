@@ -3,9 +3,9 @@
   "omie": {
     "fuente": "OMIE",
     "fecha_texto": null,
-    "precio_medio_es": null,
-    "precio_maximo_es": null,
-    "precio_minimo_es": null,
+    "precio_medio_es": 112.56,
+    "precio_maximo_es": 225.57,
+    "precio_minimo_es": -1.14,
     "volumen_gwh_es": 402.8,
     "url": "https://www.omie.es/es/spot-hoy"
   },
@@ -78,25 +78,25 @@
     {
       "fuente": "OMIE",
       "variable": "precio_medio_es",
-      "valor": null,
+      "valor": 112.56,
       "valor_anterior": 124.78,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": -12.219999999999999,
+      "variacion_pct": -9.793236095528128
     },
     {
       "fuente": "OMIE",
       "variable": "precio_maximo_es",
-      "valor": null,
+      "valor": 225.57,
       "valor_anterior": 228.78,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": -3.210000000000008,
+      "variacion_pct": -1.4030946761080547
     },
     {
       "fuente": "OMIE",
       "variable": "precio_minimo_es",
-      "valor": null,
+      "valor": -1.14,
       "valor_anterior": 0.0,
-      "variacion_abs": null,
+      "variacion_abs": -1.14,
       "variacion_pct": null
     },
     {
