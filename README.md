@@ -1,6 +1,6 @@
 # Radar diario de mercados energéticos (OMIE · MIBGAS · OMIP · Brent/TTF/CO2)
 
-Scraper que se ejecuta automáticamente **todos los días a las 7:00h hora de España**
+Scraper que se ejecuta automáticamente **todos los días a las 4:13h hora de España**
 y guarda un snapshot de precios en este mismo repositorio (carpeta `data/`).
 
 ## Qué recoge
