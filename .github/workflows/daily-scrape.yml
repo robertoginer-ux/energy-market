@@ -2,12 +2,13 @@ name: Scraping diario de mercados energéticos
 
 on:
   schedule:
-    # GitHub Actions solo admite cron en UTC (sin cambio de hora).
-    # Disparamos dos veces para cubrir invierno (CET, UTC+1) y verano (CEST, UTC+2);
-    # el propio script (scrape_markets.py) comprueba la hora real en Madrid y
-    # descarta la ejecución que no caiga a las 7:00h en punto.
-    - cron: '0 5 * * *'   # 7:00 en horario de verano (CEST)
-    - cron: '0 6 * * *'   # 7:00 en horario de invierno (CET)
+    # GitHub Actions solo admite cron en UTC (sin cambio de hora) y puede
+    # retrasar la ejecución varias horas en repos con poca actividad —
+    # por eso disparamos a las 4:13h Madrid en vez de a las 7:00h, para
+    # dejar margen, y usamos un minuto "raro" (13, no 00) porque las colas
+    # de GitHub están menos saturadas fuera de los minutos redondos.
+    - cron: '13 2 * * *'   # 4:13 en horario de verano (CEST, UTC+2)
+    - cron: '13 3 * * *'   # 4:13 en horario de invierno (CET, UTC+1)
   workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions
 
 permissions:
@@ -30,8 +31,6 @@ jobs:
 
       - name: Ejecutar scraper
         env:
-          # Si se lanza manualmente (workflow_dispatch), forzamos la ejecución
-          # aunque no sean exactamente las 7:00h.
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
         run: python scrape_markets.py
 
