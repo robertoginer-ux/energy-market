@@ -344,19 +344,19 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
     Google Sheet y el email, todos a partir de la misma fuente de verdad."""
     filas = []
 
-    def agregar(fuente, variable, valor):
+    def agregar(fuente, variable, valor, **extra):
         v_ayer = valor_anterior(historico, fuente, variable, fecha_iso)
         v_abs, v_pct = calcular_variacion(valor, v_ayer)
-        filas.append(
-            {
-                "fuente": fuente,
-                "variable": variable,
-                "valor": valor,
-                "valor_anterior": v_ayer,
-                "variacion_abs": v_abs,
-                "variacion_pct": v_pct,
-            }
-        )
+        fila = {
+            "fuente": fuente,
+            "variable": variable,
+            "valor": valor,
+            "valor_anterior": v_ayer,
+            "variacion_abs": v_abs,
+            "variacion_pct": v_pct,
+        }
+        fila.update(extra)
+        filas.append(fila)
 
     omie = resultado_fuentes["omie"]
     agregar("OMIE", "precio_medio_es", omie.get("precio_medio_es"))
@@ -379,7 +379,7 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
         agregar("Yahoo", activo["activo"], activo.get("precio_actual"))
 
     co2 = resultado_fuentes["co2"]
-    agregar("Sendeco2", "CO2", co2.get("precio_actual"))
+    agregar("Sendeco2", "CO2", co2.get("precio_actual"), fecha_dato=co2.get("fecha_dato"))
 
     return filas
 
