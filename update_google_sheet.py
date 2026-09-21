@@ -3,7 +3,8 @@ Actualiza el Google Sheet de seguimiento de mercados con los datos del día
 (valor + variación respecto al día anterior).
 
 Requiere la variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON con el contenido
-completo del JSON de la cuenta de servicio de Google Cloud.
+completo del JSON de la cuenta de servicio de Google Cloud (ver README.md
+para cómo crearla y compartir el Sheet con ella).
 
 Uso:
     python update_google_sheet.py [FECHA_ISO]
@@ -44,13 +45,21 @@ def col_to_letter(idx: int) -> str:
     return letters
 
 
-def fmt_variacion(fila: dict) -> str:
+def fmt_variacion(fila: dict, fecha_ddmmyyyy_hoy: str) -> str:
     abs_ = fila.get("variacion_abs")
     pct = fila.get("variacion_pct")
-    if abs_ is None or pct is None:
-        return ""
-    signo = "+" if abs_ >= 0 else ""
-    return f"{signo}{abs_:.2f} ({signo}{pct:.1f}%)"
+    partes = []
+    if abs_ is not None and pct is not None:
+        signo = "+" if abs_ >= 0 else ""
+        partes.append(f"{signo}{abs_:.2f} ({signo}{pct:.1f}%)")
+
+    fecha_dato = fila.get("fecha_dato")
+    if fecha_dato and fecha_dato != fecha_ddmmyyyy_hoy:
+        # El dato (ej. de CO2) corresponde a un día anterior por retraso de
+        # publicación de la fuente (p.ej. fin de semana): lo dejamos anotado.
+        partes.append(f"[dato {fecha_dato}]")
+
+    return " ".join(partes)
 
 
 def get_service():
@@ -148,7 +157,7 @@ def main():
             updates.append(
                 {"range": f"'{sheet_title}'!{col_to_letter(col_valor)}{fila_idx + 1}", "values": [[fila["valor"]]]}
             )
-        variacion_texto = fmt_variacion(fila)
+        variacion_texto = fmt_variacion(fila, fecha_ddmmyyyy)
         if variacion_texto:
             updates.append(
                 {
