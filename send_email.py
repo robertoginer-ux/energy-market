@@ -4,8 +4,8 @@ diseño de marca de Octopus Energy España (fondo oscuro, Montserrat, acentos
 Voltage/Soho Lights).
 
 Requiere la variable de entorno GMAIL_APP_PASSWORD (contraseña de aplicación
-de roberto.giner@octoenergy.com). El destinatario es el grupo de
-distribución smt_spain@octoenergy.com.
+de roberto.giner@octoenergy.com). Los destinatarios son el grupo de
+distribución smt_spain@octoenergy.com más 3 direcciones individuales.
 
 Uso:
     python send_email.py [FECHA_ISO]
@@ -29,7 +29,12 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 GMAIL_USER = "roberto.giner@octoenergy.com"  # remitente real (cuenta de Gmail con contraseña de aplicación)
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
-DESTINATARIO = "smt_spain@octoenergy.com"  # grupo de distribución (Google Group), no una cuenta con login
+DESTINATARIOS = [
+    "smt_spain@octoenergy.com",  # grupo de distribución (Google Group), no una cuenta con login
+    "giampaolo.panizio@octopusenergy.es",
+    "alberto.lopez.hernandez@octopusenergy.es",
+    "andres.gilblanco@octoenergy.com",
+]
 
 # Nombres bonitos para las variables, para que el email sea legible sin jerga
 ETIQUETAS = {
@@ -64,19 +69,34 @@ def fmt_numero(valor, decimales=2) -> str:
     return texto.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def variacion_celda(fila: dict) -> str:
+def variacion_celda(fila: dict, fecha_iso_hoy: str) -> str:
     abs_ = fila.get("variacion_abs")
     pct = fila.get("variacion_pct")
     if abs_ is None or pct is None:
-        return '<span style="color:#A49FC6;font-size:12px;">Sin dato previo</span>'
-    positivo = abs_ >= 0
-    color = "#06F0FB" if positivo else "#F05DFB"
-    flecha = "▲" if positivo else "▼"
-    signo = "+" if positivo else ""
-    return (
-        f'<span style="color:{color};font-weight:600;white-space:nowrap;">'
-        f"{flecha} {signo}{fmt_numero(abs_)} ({signo}{fmt_numero(pct, 1)}%)</span>"
-    )
+        html = '<span style="color:#A49FC6;font-size:12px;">Sin dato previo</span>'
+    else:
+        positivo = abs_ >= 0
+        color = "#06F0FB" if positivo else "#F05DFB"
+        flecha = "▲" if positivo else "▼"
+        signo = "+" if positivo else ""
+        html = (
+            f'<span style="color:{color};font-weight:600;white-space:nowrap;">'
+            f"{flecha} {signo}{fmt_numero(abs_)} ({signo}{fmt_numero(pct, 1)}%)</span>"
+        )
+
+    fecha_dato = fila.get("fecha_dato")  # formato DD-MM-YYYY
+    if fecha_dato:
+        try:
+            dd, mm, yyyy = fecha_dato.split("-")
+            iso_dato = f"{yyyy}-{mm}-{dd}"
+        except ValueError:
+            iso_dato = None
+        if iso_dato and iso_dato != fecha_iso_hoy:
+            # La fuente (p.ej. Sendeco2 en fin de semana) publica con retraso;
+            # dejamos claro de qué día es realmente el dato.
+            html += f'<br><span style="color:#A49FC6;font-size:10px;">dato del {dd}/{mm}</span>'
+
+    return html
 
 
 def construir_html(resultado: dict) -> str:
@@ -100,7 +120,7 @@ def construir_html(resultado: dict) -> str:
             <tr style="border-bottom:1px solid rgba(88,64,255,0.2);">
               <td style="padding:9px 12px;color:#DCDDFF;font-size:13px;">{etiqueta(fila['variable'])}</td>
               <td style="padding:9px 12px;color:#FCFFFF;font-size:14px;font-weight:600;text-align:right;">{fmt_numero(fila['valor']) if fila['valor'] is not None else '—'}</td>
-              <td style="padding:9px 12px;font-size:12px;text-align:right;">{variacion_celda(fila)}</td>
+              <td style="padding:9px 12px;font-size:12px;text-align:right;">{variacion_celda(fila, fecha_iso)}</td>
             </tr>"""
 
         secciones_html += f"""
@@ -150,7 +170,7 @@ def construir_html(resultado: dict) -> str:
             <td style="padding:18px 32px 28px 32px;">
               <p style="color:#A49FC6;font-size:11px;margin:0;line-height:1.5;">
                 Generado automáticamente cada día a las 7:00h.<br>
-                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance · sendeco2.com.
+                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance.
               </p>
             </td>
           </tr>
@@ -178,13 +198,13 @@ def enviar(html: str, fecha_iso: str):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Radar de mercados energéticos – {fecha_fmt}"
     msg["From"] = GMAIL_USER
-    msg["To"] = DESTINATARIO
+    msg["To"] = ", ".join(DESTINATARIOS)
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, [DESTINATARIO], msg.as_string())
-    print(f"[OK] Email enviado desde {GMAIL_USER} a {DESTINATARIO}")
+        server.sendmail(GMAIL_USER, DESTINATARIOS, msg.as_string())
+    print(f"[OK] Email enviado desde {GMAIL_USER} a {', '.join(DESTINATARIOS)}")
 
 
 def main():
