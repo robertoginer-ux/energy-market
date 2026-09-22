@@ -2,12 +2,12 @@
   "fecha": "2026-09-22",
   "omie": {
     "fuente": "OMIE",
-    "fecha_texto": null,
-    "precio_medio_es": null,
-    "precio_maximo_es": null,
-    "precio_minimo_es": null,
-    "volumen_gwh_es": null,
-    "url": "https://www.omie.es/es/spot-hoy"
+    "fecha_texto": "22/09/2026",
+    "precio_medio_es": 156.02,
+    "precio_maximo_es": 300.0,
+    "precio_minimo_es": 1.99,
+    "volumen_gwh_es": 564.0,
+    "url": "https://www.omie.es/"
   },
   "mibgas": {
     "fuente": "MIBGAS",
@@ -52,8 +52,8 @@
       "fuente": "Yahoo Finance",
       "activo": "Brent",
       "ticker": "BZ=F",
-      "precio_actual": 97.2,
-      "precio_cierre_anterior": 96.24,
+      "precio_actual": 100.86,
+      "precio_cierre_anterior": 100.34,
       "moneda": "USD",
       "url": "https://finance.yahoo.com/quote/BZ=F/"
     },
@@ -78,34 +78,34 @@
     {
       "fuente": "OMIE",
       "variable": "precio_medio_es",
-      "valor": null,
+      "valor": 156.02,
       "valor_anterior": 138.77,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": 17.25,
+      "variacion_pct": 12.43064062837789
     },
     {
       "fuente": "OMIE",
       "variable": "precio_maximo_es",
-      "valor": null,
+      "valor": 300.0,
       "valor_anterior": 276.54,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": 23.45999999999998,
+      "variacion_pct": 8.48340203948795
     },
     {
       "fuente": "OMIE",
       "variable": "precio_minimo_es",
-      "valor": null,
+      "valor": 1.99,
       "valor_anterior": 1.49,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": 0.5,
+      "variacion_pct": 33.557046979865774
     },
     {
       "fuente": "OMIE",
       "variable": "volumen_gwh_es",
-      "valor": null,
+      "valor": 564.0,
       "valor_anterior": 482.4,
-      "variacion_abs": null,
-      "variacion_pct": null
+      "variacion_abs": 81.60000000000002,
+      "variacion_pct": 16.915422885572145
     },
     {
       "fuente": "MIBGAS",
@@ -198,10 +198,10 @@
     {
       "fuente": "Yahoo",
       "variable": "Brent",
-      "valor": 97.2,
+      "valor": 100.86,
       "valor_anterior": 97.29,
-      "variacion_abs": -0.09000000000000341,
-      "variacion_pct": -0.09250693802035502
+      "variacion_abs": 3.569999999999993,
+      "variacion_pct": 3.66944187480727
     },
     {
       "fuente": "Yahoo",
