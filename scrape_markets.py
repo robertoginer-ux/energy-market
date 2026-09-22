@@ -1,31 +1,21 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
-y CO2/EUA (Sendeco2).
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF/CO2 (Investing.com).
 
-Diseñado para ejecutarse vía GitHub Actions todos los días (ver
-.github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
+Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
+(ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
 
     pip install -r requirements.txt
-    python scrape_markets.py --force
+    python scrape_markets.py
 
 El script:
-  1. Descarga cada página/endpoint público (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP), el
-     JSON público de Yahoo Finance (Brent/TTF), o el CSV público de Sendeco2 (CO2).
-  3. Calcula la variación (absoluta y %) de cada variable respecto al día
-     anterior, usando el histórico ya guardado.
-  4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
-     lista con valor + variación de cada variable — la usan también
-     update_google_sheet.py y send_email.py).
-  5. Añade esas mismas filas a data/history.csv.
-
-Solo se ejecuta una vez al día: si ya existe el snapshot de hoy, no repite
-(esto es importante porque GitHub Actions puede retrasar el cron varias
-horas, y no queremos que eso impida la ejecución del día).
+  1. Descarga cada página pública (sin login, sin API key).
+  2. Extrae los valores mediante expresiones regulares sobre el texto plano de la página.
+  3. Guarda un snapshot diario en data/YYYY-MM-DD.json
+  4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
 
 IMPORTANTE: estas páginas son HTML público que puede cambiar de estructura en cualquier
 momento. Si algún valor sale como None, lo primero es volver a mirar el texto real de la
-página y ajustar la regex correspondiente.
+página (con requests.get(url).text) y ajustar la regex correspondiente.
 """
 
 import csv
@@ -78,17 +68,20 @@ def get_text(url: str) -> str:
 # ---------------------------------------------------------------------------
 # OMIE
 # ---------------------------------------------------------------------------
+# OMIE rediseñó la página "spot-hoy" en septiembre de 2026 (ahora es una app
+# JavaScript sin datos en el HTML). Pero la PORTADA (omie.es) sigue teniendo
+# el mismo resumen en texto plano —incluido el volumen negociado—, así que
+# scrapeamos ahí en su lugar.
 def scrape_omie() -> dict:
-    url = "https://www.omie.es/es/spot-hoy"
+    url = "https://www.omie.es/"
     text = get_text(url)
 
-    m_fecha = re.search(r"para el (\d{1,2}\s+[A-Za-zÀ-ÿ]+)", text)
+    m_fecha = re.search(r"para el día:\s*(\d{2}/\d{2}/\d{4})", text)
     m_es = re.search(
         r"Precio medio España\s+([\-\d.,]+)\s*€/MWh\s*Máximo\s+([\-\d.,]+)\s*€/MWh\s*"
-        r"Mínimo\s+([\-\d.,]+)\s*€/MWh",
+        r"Mínimo\s+([\-\d.,]+)\s*€/MWh\s*Energía negociada\s+([\d.,]+)\s*GWh",
         text,
     )
-    m_vol = re.search(r"Volumen negociado España\s+([\d.,]+)", text)
 
     return {
         "fuente": "OMIE",
@@ -96,7 +89,7 @@ def scrape_omie() -> dict:
         "precio_medio_es": to_float(m_es.group(1)) if m_es else None,
         "precio_maximo_es": to_float(m_es.group(2)) if m_es else None,
         "precio_minimo_es": to_float(m_es.group(3)) if m_es else None,
-        "volumen_gwh_es": to_float(m_vol.group(1)) if m_vol else None,
+        "volumen_gwh_es": to_float(m_es.group(4)) if m_es else None,
         "url": url,
     }
 
