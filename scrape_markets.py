@@ -1,21 +1,31 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF/CO2 (Investing.com).
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
+y CO2/EUA (EEX, informe oficial de subasta).
 
-Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
-(ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
+Diseñado para ejecutarse vía GitHub Actions todos los días (ver
+.github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
 
     pip install -r requirements.txt
-    python scrape_markets.py
+    python scrape_markets.py --force
 
 El script:
-  1. Descarga cada página pública (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares sobre el texto plano de la página.
-  3. Guarda un snapshot diario en data/YYYY-MM-DD.json
-  4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
+  1. Descarga cada página/fichero público (sin login, sin API key).
+  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP), el
+     JSON público de Yahoo Finance (Brent/TTF), o el Excel oficial de EEX (CO2).
+  3. Calcula la variación (absoluta y %) de cada variable respecto al día
+     anterior, usando el histórico ya guardado.
+  4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
+     lista con valor + variación de cada variable — la usan también
+     update_google_sheet.py y send_email.py).
+  5. Añade esas mismas filas a data/history.csv.
+
+Solo se ejecuta una vez al día: si ya existe el snapshot de hoy, no repite
+(esto es importante porque GitHub Actions puede retrasar el cron varias
+horas, y no queremos que eso impida la ejecución del día).
 
 IMPORTANTE: estas páginas son HTML público que puede cambiar de estructura en cualquier
 momento. Si algún valor sale como None, lo primero es volver a mirar el texto real de la
-página (con requests.get(url).text) y ajustar la regex correspondiente.
+página y ajustar la regex correspondiente.
 """
 
 import csv
@@ -225,44 +235,61 @@ def scrape_yahoo() -> list:
 
 
 # ---------------------------------------------------------------------------
-# CO2 (EUA) vía Sendeco2
+# CO2 (EUA) vía EEX (informe oficial de subasta)
 # ---------------------------------------------------------------------------
-# sendeco2.com publica un CSV público con el precio diario de referencia del
-# EUA (derechos de emisión), sin bloqueos de IP ni necesidad de navegador.
-# No es exactamente el mismo contrato que investing.com (CFI2Z6, un futuro
-# concreto), sino el precio de referencia diario que usa el mercado, pero es
-# la fuente gratuita más fiable que hemos encontrado.
+# Sendeco2 publicaba el dato con 1-2 días de retraso. EEX celebra la subasta
+# oficial de EUA todas las mañanas (9:00-11:00 CET) y publica este informe
+# en Excel el MISMO día, poco después de las 11:00h — sin bloqueos de IP.
 def scrape_co2() -> dict:
+    import openpyxl
+    from io import BytesIO
+
     year = datetime.now(MADRID_TZ).year
-    url = f"https://www.sendeco2.com/site_sendeco/service/download-csv.php?year={year}"
+    url = f"https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market-auction-report-{year}-data.xlsx"
+
     resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     resp.raise_for_status()
-    resp.encoding = "iso-8859-15"
 
-    lineas = [l for l in resp.text.strip().splitlines() if l.strip()]
-    filas_csv = lineas[1:]  # se salta la cabecera "Fecha;EUA;CER;SPREAD..."
-    if not filas_csv:
-        raise ValueError("El CSV de Sendeco2 no tiene filas de datos")
+    wb = openpyxl.load_workbook(BytesIO(resp.content), data_only=True)
+    ws = wb["Primary Market Auction"]
 
-    ultima = filas_csv[-1].split(";")
-    fecha_dato = ultima[0]  # formato DD-MM-YYYY
-    precio_eua = to_float(ultima[1])
+    header_row = 6
+    header = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
+    try:
+        col_fecha = header.index("Date")
+        col_precio = header.index("Auction Price €/tCO2")
+        col_status = header.index("Status")
+    except ValueError as e:
+        raise ValueError(f"No se encontraron las columnas esperadas en el informe de EEX: {e}")
 
-    return {
-        "fuente": "Sendeco2",
-        "activo": "CO2",
-        "precio_actual": precio_eua,
-        "fecha_dato": fecha_dato,
-        "url": "https://www.sendeco2.com/es/precios-co2",
-    }
+    # Las filas están ordenadas de más reciente a más antigua: cogemos la
+    # primera subasta "successful" que encontremos (si un día se cancela o
+    # no hay datos, seguimos con la del día hábil anterior).
+    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+        fecha_dt = row[col_fecha]
+        precio = row[col_precio]
+        estado = row[col_status]
+        if fecha_dt is None or precio in (None, ""):
+            continue
+        if estado and str(estado).lower() != "successful":
+            continue
+        return {
+            "fuente": "EEX",
+            "activo": "CO2",
+            "precio_actual": float(precio),
+            "fecha_dato": fecha_dt.strftime("%d-%m-%Y"),
+            "url": "https://www.eex.com/en/markets/environmental-markets/eu-ets-auctions",
+        }
+
+    raise ValueError("No se encontró ninguna subasta 'successful' en el informe de EEX")
 
 
 def scrape_co2_safe() -> dict:
     try:
         return scrape_co2()
     except Exception as e:
-        print(f"[AVISO] Fallo al scrapear CO2 (Sendeco2): {e}")
-        return {"fuente": "Sendeco2", "activo": "CO2", "precio_actual": None, "error": str(e)}
+        print(f"[AVISO] Fallo al scrapear CO2 (EEX): {e}")
+        return {"fuente": "EEX", "activo": "CO2", "precio_actual": None, "error": str(e)}
 
 
 def col_to_letter(idx: int) -> str:
@@ -372,7 +399,7 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
         agregar("Yahoo", activo["activo"], activo.get("precio_actual"))
 
     co2 = resultado_fuentes["co2"]
-    agregar("Sendeco2", "CO2", co2.get("precio_actual"), fecha_dato=co2.get("fecha_dato"))
+    agregar("EEX", "CO2", co2.get("precio_actual"), fecha_dato=co2.get("fecha_dato"))
 
     return filas
 
