@@ -109,7 +109,7 @@ def construir_html(resultado: dict) -> str:
     for fila in filas:
         grupos.setdefault(fila["fuente"], []).append(fila)
 
-    orden_fuentes = ["OMIE", "MIBGAS", "OMIP", "Yahoo", "Sendeco2"]
+    orden_fuentes = ["OMIE", "MIBGAS", "OMIP", "Yahoo", "EEX"]
     secciones_html = ""
     for fuente in orden_fuentes:
         if fuente not in grupos:
@@ -170,7 +170,7 @@ def construir_html(resultado: dict) -> str:
             <td style="padding:18px 32px 28px 32px;">
               <p style="color:#A49FC6;font-size:11px;margin:0;line-height:1.5;">
                 Generado automáticamente cada día a las 7:00h.<br>
-                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance.
+                Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance · eex.com.
               </p>
             </td>
           </tr>
