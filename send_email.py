@@ -1,11 +1,15 @@
 """
 Envía el email diario con los datos de mercados y su variación, con el
-diseño de marca de Octopus Energy España (fondo oscuro, Montserrat, acentos
-Voltage/Soho Lights).
+diseño de marca de Octopus Energy España (fondo oscuro, Montserrat, logo
+real + Constantine, acentos Voltage/Hot Pink).
 
 Requiere la variable de entorno GMAIL_APP_PASSWORD (contraseña de aplicación
 de roberto.giner@octoenergy.com). Los destinatarios son el grupo de
-distribución smt_spain@octoenergy.com más 3 direcciones individuales.
+distribución smt_spain@octoenergy.com más varias direcciones individuales.
+
+Requiere también los ficheros assets/logo.svg y assets/constantine_casual.png
+(se commitean al repo junto al script; no hace falta descargarlos en cada
+ejecución).
 
 Uso:
     python send_email.py [FECHA_ISO]
@@ -15,6 +19,7 @@ Lee el snapshot data/<FECHA_ISO>.json generado por scrape_markets.py — si no
 existe, termina sin error, simplemente avisando.
 """
 
+import base64
 import json
 import os
 import smtplib
@@ -25,7 +30,9 @@ from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
 
 MADRID_TZ = ZoneInfo("Europe/Madrid")
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 GMAIL_USER = "roberto.giner@octoenergy.com"  # remitente real (cuenta de Gmail con contraseña de aplicación)
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
@@ -34,7 +41,13 @@ DESTINATARIOS = [
     "giampaolo.panizio@octopusenergy.es",
     "alberto.lopez.hernandez@octopusenergy.es",
     "andres.gilblanco@octoenergy.com",
+    "ores-oms-ops@octoenergy.com",
 ]
+
+# Ancho fijo (px) de la columna de etiquetas, igual en todas las secciones,
+# para que valor y variación queden alineados verticalmente entre secciones
+# con nombres de distinta longitud (ej. "PVB D+1" vs "Precio mínimo España").
+LABEL_WIDTH_PX = 230
 
 # Nombres bonitos para las variables, para que el email sea legible sin jerga
 ETIQUETAS = {
@@ -69,18 +82,40 @@ def fmt_numero(valor, decimales=2) -> str:
     return texto.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
+def cargar_logo_svg() -> str:
+    """Lee el logo SVG oficial y lo ajusta para que herede el tamaño por CSS."""
+    path = os.path.join(ASSETS_DIR, "logo.svg")
+    with open(path, encoding="utf-8") as f:
+        svg = f.read()
+    return svg.replace(
+        '<svg width="1293" height="200" viewBox="0 0 1293 200"',
+        '<svg viewBox="0 0 1293 200" style="height:28px;width:auto;display:block;"',
+    )
+
+
+def cargar_constantine_b64() -> str:
+    """Lee la mascota (pose 'casual', con café) y la codifica en base64 para
+    poder incrustarla directamente en el HTML del email."""
+    path = os.path.join(ASSETS_DIR, "constantine_casual.png")
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
+
+
 def variacion_celda(fila: dict, fecha_iso_hoy: str) -> str:
     abs_ = fila.get("variacion_abs")
     pct = fila.get("variacion_pct")
     if abs_ is None or pct is None:
-        html = '<span style="color:#A49FC6;font-size:12px;">Sin dato previo</span>'
+        html = '<span style="color:#A49FC6;font-size:13px;">Sin dato previo</span>'
     else:
         positivo = abs_ >= 0
-        color = "#06F0FB" if positivo else "#F05DFB"
+        # Hot Pink (#FF039F) para bajadas: acento de alto contraste que usa
+        # el equipo en reportes operativos internos (más contundente que el
+        # Soho Lights estándar, pensado para marketing/cliente).
+        color = "#06F0FB" if positivo else "#FF039F"
         flecha = "▲" if positivo else "▼"
         signo = "+" if positivo else ""
         html = (
-            f'<span style="color:{color};font-weight:600;white-space:nowrap;">'
+            f'<span style="color:{color};font-weight:700;white-space:nowrap;">'
             f"{flecha} {signo}{fmt_numero(abs_)} ({signo}{fmt_numero(pct, 1)}%)</span>"
         )
 
@@ -92,11 +127,45 @@ def variacion_celda(fila: dict, fecha_iso_hoy: str) -> str:
         except ValueError:
             iso_dato = None
         if iso_dato and iso_dato != fecha_iso_hoy:
-            # La fuente (p.ej. Sendeco2 en fin de semana) publica con retraso;
-            # dejamos claro de qué día es realmente el dato.
-            html += f'<br><span style="color:#A49FC6;font-size:10px;">dato del {dd}/{mm}</span>'
+            # La fuente (p.ej. EEX en fin de semana/festivo) puede no tener
+            # subasta ese día; dejamos claro de qué día es realmente el dato.
+            html += f'<br><span style="color:#A49FC6;font-size:11px;">dato del {dd}/{mm}</span>'
 
     return html
+
+
+def construir_seccion(nombre: str, filas: list) -> str:
+    filas_html = ""
+    for fila in filas:
+        valor_txt = fmt_numero(fila["valor"]) if fila["valor"] is not None else "—"
+        filas_html += f"""
+        <tr style="border-bottom:1px solid rgba(88,64,255,0.2);">
+          <td style="padding:11px 14px;color:#DCDDFF;font-size:15px;width:{LABEL_WIDTH_PX}px;">{etiqueta(fila['variable'])}</td>
+          <td style="padding:11px 14px;color:#FCFFFF;font-size:16px;font-weight:700;text-align:right;">{valor_txt}</td>
+          <td style="padding:11px 14px;font-size:14px;text-align:right;">{variacion_celda(fila, fila.get('_fecha_iso_hoy'))}</td>
+        </tr>"""
+
+    return f"""
+    <tr>
+      <td style="padding:22px 24px 6px 24px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="width:4px;height:14px;background:#FF039F;border-radius:2px;"></td>
+          <td style="padding-left:8px;color:#DCDDFF;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">{nombre}</td>
+        </tr></table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 8px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(45,26,131,0.6);border:1px solid rgba(88,64,255,0.3);border-radius:12px;overflow:hidden;table-layout:fixed;">
+          <colgroup>
+            <col style="width:{LABEL_WIDTH_PX}px;">
+            <col>
+            <col>
+          </colgroup>
+          {filas_html}
+        </table>
+      </td>
+    </tr>"""
 
 
 def construir_html(resultado: dict) -> str:
@@ -104,45 +173,29 @@ def construir_html(resultado: dict) -> str:
     fecha_fmt = datetime.fromisoformat(fecha_iso).strftime("%d/%m/%Y")
     filas = resultado.get("filas", [])
 
-    # Agrupamos por fuente para que el email tenga secciones claras
+    # Le pasamos la fecha de hoy a cada fila para poder detectar desfases
+    # (ver variacion_celda) sin cambiar la firma de construir_seccion.
+    for fila in filas:
+        fila["_fecha_iso_hoy"] = fecha_iso
+
     grupos = {}
     for fila in filas:
         grupos.setdefault(fila["fuente"], []).append(fila)
 
     orden_fuentes = ["OMIE", "MIBGAS", "OMIP", "Yahoo", "EEX"]
-    secciones_html = ""
-    for fuente in orden_fuentes:
-        if fuente not in grupos:
-            continue
-        filas_html = ""
-        for fila in grupos[fuente]:
-            filas_html += f"""
-            <tr style="border-bottom:1px solid rgba(88,64,255,0.2);">
-              <td style="padding:9px 12px;color:#DCDDFF;font-size:13px;">{etiqueta(fila['variable'])}</td>
-              <td style="padding:9px 12px;color:#FCFFFF;font-size:14px;font-weight:600;text-align:right;">{fmt_numero(fila['valor']) if fila['valor'] is not None else '—'}</td>
-              <td style="padding:9px 12px;font-size:12px;text-align:right;">{variacion_celda(fila, fecha_iso)}</td>
-            </tr>"""
+    secciones_html = "".join(
+        construir_seccion(fuente, grupos[fuente]) for fuente in orden_fuentes if fuente in grupos
+    )
 
-        secciones_html += f"""
-        <tr>
-          <td style="padding:20px 24px 6px 24px;">
-            <div style="color:#A49FC6;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;">{fuente}</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0 24px 8px 24px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(45,26,131,0.6);border:1px solid rgba(88,64,255,0.25);border-radius:12px;overflow:hidden;">
-              {filas_html}
-            </table>
-          </td>
-        </tr>"""
+    logo_svg = cargar_logo_svg()
+    constantine_b64 = cargar_constantine_b64()
 
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <title>Radar de mercados energéticos</title>
 </head>
 <body style="margin:0;padding:0;background:#0D0030;font-family:'Montserrat',Arial,sans-serif;">
@@ -151,27 +204,28 @@ def construir_html(resultado: dict) -> str:
       <td align="center">
         <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:linear-gradient(135deg,#18004A 0%,#0D0030 100%);border-radius:16px;overflow:hidden;">
           <tr>
-            <td style="padding:28px 32px 18px 32px;border-bottom:1px solid rgba(88,64,255,0.25);">
+            <td style="padding:26px 32px 18px 32px;border-bottom:1px solid rgba(88,64,255,0.25);">
               <table width="100%" role="presentation"><tr>
-                <td style="color:#FCFFFF;font-size:20px;font-weight:700;">octopus energy</td>
-                <td align="right" style="color:#A49FC6;font-size:12px;">{fecha_fmt}</td>
+                <td>{logo_svg}</td>
+                <td align="right" style="color:#A49FC6;font-size:13px;vertical-align:middle;">{fecha_fmt}</td>
               </tr></table>
-              <div style="width:56px;height:2px;background:#06F0FB;margin-top:14px;"></div>
+              <div style="width:56px;height:3px;background:linear-gradient(90deg,#5840FF 0%,#FF039F 100%);margin-top:16px;"></div>
             </td>
           </tr>
           <tr>
             <td style="padding:22px 32px 4px 32px;">
-              <h1 style="color:#FCFFFF;font-size:19px;font-weight:600;margin:0 0 4px 0;">Radar diario de mercados energéticos</h1>
-              <p style="color:#DCDDFF;font-size:13px;margin:0;">OMIE · MIBGAS · OMIP · Brent · TTF, con variación respecto al día anterior</p>
+              <h1 style="color:#FCFFFF;font-size:21px;font-weight:700;margin:0 0 4px 0;">Radar diario de mercados energéticos</h1>
+              <p style="color:#DCDDFF;font-size:14px;margin:0;">OMIE · MIBGAS · OMIP · Brent · TTF, con variación respecto al día anterior</p>
             </td>
           </tr>
           {secciones_html}
           <tr>
-            <td style="padding:18px 32px 28px 32px;">
-              <p style="color:#A49FC6;font-size:11px;margin:0;line-height:1.5;">
+            <td style="padding:20px 32px 32px 32px;position:relative;">
+              <p style="color:#A49FC6;font-size:12px;margin:0;line-height:1.5;">
                 Generado automáticamente cada día a las 7:00h.<br>
                 Fuentes: omie.es · mibgas.es · omip.pt · Yahoo Finance · eex.com.
               </p>
+              <img src="data:image/png;base64,{constantine_b64}" style="position:absolute;right:20px;bottom:6px;width:64px;height:auto;" alt="Constantine">
             </td>
           </tr>
         </table>
