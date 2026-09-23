@@ -1,73 +1,55 @@
-name: Scraper Precios 2.0TD — Diario
+name: Scraping diario de mercados energéticos
 
 on:
   schedule:
-    - cron: "0 5 * * *"
-  workflow_dispatch:
+    # IMPORTANTE: GitHub Actions no entiende estaciones del año — un cron
+    # programado "para verano" y otro "para invierno" se ejecutan LOS DOS
+    # todos los días (esto causó el envío duplicado del email). Por eso
+    # dejamos un único disparador: como el script ya no depende de la hora
+    # exacta (ver ya_se_ejecuto_hoy en scrape_markets.py), un solo cron es
+    # suficiente y elimina el riesgo de duplicados.
+    - cron: '13 3 * * *'   # 4:13 CET (invierno) / 5:13 CEST (verano)
+  workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions
+
+permissions:
+  contents: write
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout repositorio
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Configurar Python 3.11
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
 
-      - name: Instalar dependencias Python
-        run: |
-          pip install playwright requests gspread google-auth beautifulsoup4
-
-      - name: Instalar navegador Chromium
-        run: playwright install chromium --with-deps
-
-      - name: Pre-descargar HTML de Iberdrola con curl
-        run: |
-          mkdir -p iberdrola_cache
-          curl -s -L \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
-            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
-            -H "Accept-Language: es-ES,es;q=0.9" \
-            -H "Referer: https://www.iberdrola.es/" \
-            --cookie-jar iberdrola_cache/cookies.txt \
-            "https://www.iberdrola.es/luz/tarifas/plan-online" \
-            -o iberdrola_cache/plan-online.html
-          curl -s -L \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
-            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
-            -H "Accept-Language: es-ES,es;q=0.9" \
-            -H "Referer: https://www.iberdrola.es/" \
-            --cookie-jar iberdrola_cache/cookies.txt \
-            "https://www.iberdrola.es/luz/tarifas/plan-online-tres-periodos" \
-            -o iberdrola_cache/plan-online-3p.html
-          echo "HTML descargado. Tamaños:"
-          wc -c iberdrola_cache/*.html
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
 
       - name: Ejecutar scraper
         env:
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scraper.py
+          # Si se lanza manualmente (workflow_dispatch), forzamos la ejecución
+          # aunque no sean exactamente las 7:00h.
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: python scrape_markets.py
 
-      - name: Subir backup JSON
-        uses: actions/upload-artifact@v4
-        with:
-          name: precios-${{ github.run_id }}
-          path: data/
-          retention-days: 90
+      - name: Actualizar Google Sheet
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python update_google_sheet.py
 
-      - name: Subir dashboard generado
-        uses: actions/upload-artifact@v4
-        with:
-          name: dashboard-${{ github.run_id }}
-          path: dashboard_dist/
-          retention-days: 30
+      - name: Enviar email diario
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python send_email.py
+
+      - name: Commit y push de los datos nuevos
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "Snapshot de mercados $(date -u +%Y-%m-%d)"
+          git push
