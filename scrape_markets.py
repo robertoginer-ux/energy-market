@@ -1,21 +1,31 @@
 """
-Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP y Brent/TTF/CO2 (Investing.com).
+Scraper diario de mercados energéticos: OMIE, MIBGAS, OMIP, Brent/TTF (Yahoo Finance)
+y CO2/EUA (EEX, informe oficial de subasta).
 
-Diseñado para ejecutarse vía GitHub Actions todos los días a las 7:00h hora de España
-(ver .github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
+Diseñado para ejecutarse vía GitHub Actions todos los días (ver
+.github/workflows/daily-scrape.yml). También se puede ejecutar en local con:
 
     pip install -r requirements.txt
-    python scrape_markets.py
+    python scrape_markets.py --force
 
 El script:
-  1. Descarga cada página pública (sin login, sin API key).
-  2. Extrae los valores mediante expresiones regulares sobre el texto plano de la página.
-  3. Guarda un snapshot diario en data/YYYY-MM-DD.json
-  4. Añade una fila resumen a data/history.csv (uno por fuente/producto)
+  1. Descarga cada página/fichero público (sin login, sin API key).
+  2. Extrae los valores mediante expresiones regulares (OMIE/MIBGAS/OMIP), el
+     JSON público de Yahoo Finance (Brent/TTF), o el Excel oficial de EEX (CO2).
+  3. Calcula la variación (absoluta y %) de cada variable respecto al día
+     anterior, usando el histórico ya guardado.
+  4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
+     lista con valor + variación de cada variable — la usan también
+     update_google_sheet.py y send_email.py).
+  5. Añade esas mismas filas a data/history.csv.
+
+Solo se ejecuta una vez al día: si ya existe el snapshot de hoy, no repite
+(esto es importante porque GitHub Actions puede retrasar el cron varias
+horas, y no queremos que eso impida la ejecución del día).
 
 IMPORTANTE: estas páginas son HTML público que puede cambiar de estructura en cualquier
 momento. Si algún valor sale como None, lo primero es volver a mirar el texto real de la
-página (con requests.get(url).text) y ajustar la regex correspondiente.
+página y ajustar la regex correspondiente.
 """
 
 import csv
@@ -34,7 +44,9 @@ HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-    )
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 TIMEOUT = 30
 
@@ -66,17 +78,20 @@ def get_text(url: str) -> str:
 # ---------------------------------------------------------------------------
 # OMIE
 # ---------------------------------------------------------------------------
+# OMIE rediseñó la página "spot-hoy" en septiembre de 2026 (ahora es una app
+# JavaScript sin datos en el HTML). Pero la PORTADA (omie.es) sigue teniendo
+# el mismo resumen en texto plano —incluido el volumen negociado—, así que
+# scrapeamos ahí en su lugar.
 def scrape_omie() -> dict:
-    url = "https://www.omie.es/es/spot-hoy"
+    url = "https://www.omie.es/"
     text = get_text(url)
 
-    m_fecha = re.search(r"para el (\d{1,2}\s+[A-Za-zÀ-ÿ]+)", text)
+    m_fecha = re.search(r"para el día:\s*(\d{2}/\d{2}/\d{4})", text)
     m_es = re.search(
-        r"Precio medio España\s+([\d.,]+)\s*€/MWh\s*Máximo\s+([\d.,]+)\s*€/MWh\s*"
-        r"Mínimo\s+([\d.,]+)\s*€/MWh",
+        r"Precio medio España\s+([\-\d.,]+)\s*€/MWh\s*Máximo\s+([\-\d.,]+)\s*€/MWh\s*"
+        r"Mínimo\s+([\-\d.,]+)\s*€/MWh\s*Energía negociada\s+([\d.,]+)\s*GWh",
         text,
     )
-    m_vol = re.search(r"Volumen negociado España\s+([\d.,]+)", text)
 
     return {
         "fuente": "OMIE",
@@ -84,7 +99,7 @@ def scrape_omie() -> dict:
         "precio_medio_es": to_float(m_es.group(1)) if m_es else None,
         "precio_maximo_es": to_float(m_es.group(2)) if m_es else None,
         "precio_minimo_es": to_float(m_es.group(3)) if m_es else None,
-        "volumen_gwh_es": to_float(m_vol.group(1)) if m_vol else None,
+        "volumen_gwh_es": to_float(m_es.group(4)) if m_es else None,
         "url": url,
     }
 
@@ -172,47 +187,237 @@ def scrape_omip() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Investing.com (Brent, TTF, CO2)
+# Brent y TTF vía Yahoo Finance
 # ---------------------------------------------------------------------------
-INVESTING_SOURCES = {
-    "Brent": "https://www.investing.com/commodities/brent-oil",
-    "TTF": "https://www.investing.com/commodities/dutch-ttf-gas-c1-futures",
-    "CO2": "https://www.investing.com/commodities/carbon-emissions",
+# Investing.com bloquea (403) las peticiones desde IPs de datacenter como las
+# de GitHub Actions. Yahoo Finance expone un endpoint JSON público (no
+# oficial, pero ampliamente usado) que es mucho más permisivo.
+YAHOO_SOURCES = {
+    "Brent": "BZ=F",       # Brent Crude Oil Last Day Financial Futures (USD/barril)
+    "TTF": "TTF=F",        # Dutch TTF Natural Gas Calendar (EUR/MWh)
 }
 
 
-def scrape_investing_asset(nombre: str, url: str) -> dict:
-    text = get_text(url)
+def scrape_yahoo_asset(nombre: str, symbol: str) -> dict:
+    from urllib.parse import quote
 
-    m_precio = re.search(
-        r"current price of ([\w .\-]+?) futures is ([\d.,]+), with a previous close of ([\d.,]+)",
-        text,
-        re.IGNORECASE,
-    )
-    m_rango = re.search(
-        r"trading range for [\w .\-]+? futures is between ([\d.,]+) and ([\d.,]+)",
-        text,
-        re.IGNORECASE,
-    )
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}"
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+
+    result = (data.get("chart") or {}).get("result") or []
+    if not result:
+        raise ValueError(f"Yahoo Finance no devolvió datos para {symbol}: {data.get('chart', {}).get('error')}")
+
+    meta = result[0].get("meta", {})
 
     return {
-        "fuente": "Investing.com",
+        "fuente": "Yahoo Finance",
         "activo": nombre,
-        "precio_actual": to_float(m_precio.group(2)) if m_precio else None,
-        "precio_cierre_anterior": to_float(m_precio.group(3)) if m_precio else None,
-        "rango_dia_min": to_float(m_rango.group(1)) if m_rango else None,
-        "rango_dia_max": to_float(m_rango.group(2)) if m_rango else None,
-        "url": url,
+        "ticker": symbol,
+        "precio_actual": meta.get("regularMarketPrice"),
+        "precio_cierre_anterior": meta.get("previousClose") or meta.get("chartPreviousClose"),
+        "moneda": meta.get("currency"),
+        "url": f"https://finance.yahoo.com/quote/{symbol}/",
     }
 
 
-def scrape_investing() -> list:
-    return [scrape_investing_asset(nombre, url) for nombre, url in INVESTING_SOURCES.items()]
+def scrape_yahoo() -> list:
+    resultados = []
+    for nombre, symbol in YAHOO_SOURCES.items():
+        try:
+            resultados.append(scrape_yahoo_asset(nombre, symbol))
+        except Exception as e:
+            print(f"[AVISO] Fallo al scrapear Yahoo Finance/{nombre}: {e}")
+            resultados.append({"fuente": "Yahoo Finance", "activo": nombre, "error": str(e), "ticker": symbol})
+    return resultados
+
+
+# ---------------------------------------------------------------------------
+# CO2 (EUA) vía EEX (informe oficial de subasta)
+# ---------------------------------------------------------------------------
+# Sendeco2 publicaba el dato con 1-2 días de retraso. EEX celebra la subasta
+# oficial de EUA todas las mañanas (9:00-11:00 CET) y publica este informe
+# en Excel el MISMO día, poco después de las 11:00h — sin bloqueos de IP.
+def scrape_co2() -> dict:
+    import openpyxl
+    from io import BytesIO
+
+    year = datetime.now(MADRID_TZ).year
+    url = f"https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market-auction-report-{year}-data.xlsx"
+
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+
+    wb = openpyxl.load_workbook(BytesIO(resp.content), data_only=True)
+    ws = wb["Primary Market Auction"]
+
+    header_row = 6
+    header = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
+    try:
+        col_fecha = header.index("Date")
+        col_precio = header.index("Auction Price €/tCO2")
+        col_status = header.index("Status")
+    except ValueError as e:
+        raise ValueError(f"No se encontraron las columnas esperadas en el informe de EEX: {e}")
+
+    # Las filas están ordenadas de más reciente a más antigua: cogemos la
+    # primera subasta "successful" que encontremos (si un día se cancela o
+    # no hay datos, seguimos con la del día hábil anterior).
+    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+        fecha_dt = row[col_fecha]
+        precio = row[col_precio]
+        estado = row[col_status]
+        if fecha_dt is None or precio in (None, ""):
+            continue
+        if estado and str(estado).lower() != "successful":
+            continue
+        return {
+            "fuente": "EEX",
+            "activo": "CO2",
+            "precio_actual": float(precio),
+            "fecha_dato": fecha_dt.strftime("%d-%m-%Y"),
+            "url": "https://www.eex.com/en/markets/environmental-markets/eu-ets-auctions",
+        }
+
+    raise ValueError("No se encontró ninguna subasta 'successful' en el informe de EEX")
+
+
+def scrape_co2_safe() -> dict:
+    try:
+        return scrape_co2()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear CO2 (EEX): {e}")
+        return {"fuente": "EEX", "activo": "CO2", "precio_actual": None, "error": str(e)}
+
+
+def col_to_letter(idx: int) -> str:
+    """0 -> 'A', 1 -> 'B', ..., 25 -> 'Z', 26 -> 'AA', ..."""
+    idx += 1
+    letters = ""
+    while idx > 0:
+        idx, rem = divmod(idx - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
+
+def migrar_historico_si_hace_falta():
+    """Si history.csv ya existe en el formato antiguo (sin columnas de
+    variación), lo reescribe añadiendo esas 2 columnas vacías para las filas
+    históricas, sin perder los datos ya guardados."""
+    path = os.path.join(DATA_DIR, "history.csv")
+    if not os.path.exists(path):
+        return
+    with open(path, newline="", encoding="utf-8") as f:
+        filas = list(csv.reader(f))
+    if not filas:
+        return
+    cabecera_nueva = ["fecha", "fuente", "variable", "valor", "variacion_abs", "variacion_pct"]
+    if filas[0] == cabecera_nueva:
+        return  # ya está migrado
+    nuevas = [cabecera_nueva]
+    for fila in filas[1:]:
+        fila = fila + [""] * (6 - len(fila))
+        nuevas.append(fila[:6])
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows(nuevas)
+    print("[OK] history.csv migrado al nuevo formato (con columnas de variación)")
+
+
+def cargar_historico() -> dict:
+    """Carga history.csv en un dict {(fuente, variable): [(fecha, valor), ...]}."""
+    path = os.path.join(DATA_DIR, "history.csv")
+    historico = {}
+    if not os.path.exists(path):
+        return historico
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                valor = float(row["valor"]) if row.get("valor") else None
+            except ValueError:
+                valor = None
+            historico.setdefault((row["fuente"], row["variable"]), []).append((row["fecha"], valor))
+    return historico
+
+
+def valor_anterior(historico: dict, fuente: str, variable: str, fecha_hoy: str):
+    """Valor más reciente de (fuente, variable) con fecha anterior a fecha_hoy."""
+    registros = [(f, v) for f, v in historico.get((fuente, variable), []) if f < fecha_hoy and v is not None]
+    if not registros:
+        return None
+    registros.sort(key=lambda x: x[0])
+    return registros[-1][1]
+
+
+def calcular_variacion(valor_hoy, valor_ayer):
+    if valor_hoy is None or valor_ayer is None:
+        return None, None
+    abs_ = valor_hoy - valor_ayer
+    pct = (abs_ / valor_ayer * 100) if valor_ayer else None
+    return abs_, pct
+
+
+def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) -> list:
+    """Lista plana [{fuente, variable, valor, valor_anterior, variacion_abs,
+    variacion_pct}, ...] — la usan el CSV histórico, el snapshot JSON, el
+    Google Sheet y el email, todos a partir de la misma fuente de verdad."""
+    filas = []
+
+    def agregar(fuente, variable, valor, **extra):
+        v_ayer = valor_anterior(historico, fuente, variable, fecha_iso)
+        v_abs, v_pct = calcular_variacion(valor, v_ayer)
+        fila = {
+            "fuente": fuente,
+            "variable": variable,
+            "valor": valor,
+            "valor_anterior": v_ayer,
+            "variacion_abs": v_abs,
+            "variacion_pct": v_pct,
+        }
+        fila.update(extra)
+        filas.append(fila)
+
+    omie = resultado_fuentes["omie"]
+    agregar("OMIE", "precio_medio_es", omie.get("precio_medio_es"))
+    agregar("OMIE", "precio_maximo_es", omie.get("precio_maximo_es"))
+    agregar("OMIE", "precio_minimo_es", omie.get("precio_minimo_es"))
+    agregar("OMIE", "volumen_gwh_es", omie.get("volumen_gwh_es"))
+
+    mibgas = resultado_fuentes["mibgas"]
+    agregar("MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh"))
+
+    omip = resultado_fuentes["omip"]
+    agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
+    agregar("OMIP", "q4_26", omip.get("q4_26"))
+    agregar("OMIP", "yr_27", omip.get("yr_27"))
+    agregar("OMIP", "yr_28", omip.get("yr_28"))
+    for mes, precio in omip.get("meses", {}).items():
+        agregar("OMIP", f"mes_{mes}", precio)
+
+    for activo in resultado_fuentes["yahoo"]:
+        agregar("Yahoo", activo["activo"], activo.get("precio_actual"))
+
+    co2 = resultado_fuentes["co2"]
+    agregar("EEX", "CO2", co2.get("precio_actual"), fecha_dato=co2.get("fecha_dato"))
+
+    return filas
 
 
 # ---------------------------------------------------------------------------
 # Guardado de resultados
 # ---------------------------------------------------------------------------
+def scrape_con_fallback(nombre_fuente: str, funcion):
+    """Ejecuta una función de scraping y, si falla, devuelve un dict de error
+    en vez de interrumpir todo el script (para que las demás fuentes se
+    guarden igualmente)."""
+    try:
+        return funcion()
+    except Exception as e:
+        print(f"[AVISO] Fallo al scrapear {nombre_fuente}: {e}")
+        return {"fuente": nombre_fuente, "error": str(e)}
+
+
 def guardar_snapshot(resultado: dict, fecha_iso: str):
     os.makedirs(DATA_DIR, exist_ok=True)
     path = os.path.join(DATA_DIR, f"{fecha_iso}.json")
@@ -221,73 +426,71 @@ def guardar_snapshot(resultado: dict, fecha_iso: str):
     print(f"[OK] Snapshot guardado en {path}")
 
 
-def append_history(resultado: dict, fecha_iso: str):
-    """Añade filas planas (una por dato relevante) a data/history.csv"""
+def append_history(filas: list, fecha_iso: str):
+    """Añade filas planas (una por variable) a data/history.csv, incluyendo
+    la variación absoluta y porcentual respecto al día anterior."""
     path = os.path.join(DATA_DIR, "history.csv")
     existe = os.path.exists(path)
-
-    filas = []
-    omie = resultado["omie"]
-    filas.append(["OMIE", "precio_medio_es", omie.get("precio_medio_es")])
-    filas.append(["OMIE", "precio_maximo_es", omie.get("precio_maximo_es")])
-    filas.append(["OMIE", "precio_minimo_es", omie.get("precio_minimo_es")])
-    filas.append(["OMIE", "volumen_gwh_es", omie.get("volumen_gwh_es")])
-
-    mibgas = resultado["mibgas"]
-    filas.append(["MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh")])
-
-    omip = resultado["omip"]
-    filas.append(["OMIP", "spel_base_spot", omip.get("spel_base_spot")])
-    filas.append(["OMIP", "q4_26", omip.get("q4_26")])
-    filas.append(["OMIP", "yr_27", omip.get("yr_27")])
-    filas.append(["OMIP", "yr_28", omip.get("yr_28")])
-    for mes, precio in omip.get("meses", {}).items():
-        filas.append(["OMIP", f"mes_{mes}", precio])
-
-    for activo in resultado["investing"]:
-        filas.append(["Investing", activo["activo"], activo.get("precio_actual")])
 
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not existe:
-            writer.writerow(["fecha", "fuente", "variable", "valor"])
-        for fuente, variable, valor in filas:
-            writer.writerow([fecha_iso, fuente, variable, valor])
+            writer.writerow(["fecha", "fuente", "variable", "valor", "variacion_abs", "variacion_pct"])
+        for fila in filas:
+            writer.writerow(
+                [
+                    fecha_iso,
+                    fila["fuente"],
+                    fila["variable"],
+                    fila["valor"],
+                    fila["variacion_abs"],
+                    fila["variacion_pct"],
+                ]
+            )
     print(f"[OK] {len(filas)} filas añadidas a {path}")
 
 
 # ---------------------------------------------------------------------------
-# Control de horario (Madrid 7:00h, con margen para el cron en UTC)
+# Control de ejecución: una vez al día, sea cuando sea que dispare el cron
 # ---------------------------------------------------------------------------
-def es_hora_de_ejecutar(forzar: bool) -> bool:
-    if forzar:
-        return True
-    ahora_madrid = datetime.now(MADRID_TZ)
-    # El workflow dispara el cron a las 5:00 y 6:00 UTC para cubrir el cambio de
-    # hora (CET/CEST). Solo continuamos si son las 7 en punto (rango 6:45-7:15)
-    # hora de Madrid, para no duplicar la ejecución.
-    return ahora_madrid.hour == 7 and ahora_madrid.minute < 30
+# GitHub Actions puede retrasar los cron varias horas en repos con poca
+# actividad (es un comportamiento documentado de GitHub, no un fallo
+# nuestro). Antes comprobábamos "¿son las 7:00h en Madrid?", pero si el cron
+# se disparaba tarde (p.ej. a las 11:17h), el script se cancelaba pensando
+# que aún no tocaba, y ese día no se ejecutaba nada. Ahora, en su lugar,
+# comprobamos simplemente si ya existe un snapshot de hoy: si no existe,
+# ejecutamos (sea la hora que sea); si ya existe, no repetimos (para evitar
+# duplicar el email si los dos cron del día llegan a disparase el mismo día).
+def ya_se_ejecuto_hoy(fecha_iso: str) -> bool:
+    return os.path.exists(os.path.join(DATA_DIR, f"{fecha_iso}.json"))
 
 
 def main():
     forzar = "--force" in sys.argv or os.environ.get("FORCE_RUN") == "1"
 
-    if not es_hora_de_ejecutar(forzar):
-        print("No son las 7:00h en Madrid todavía (o ya ha pasado el margen). Saliendo.")
-        return
-
     fecha_iso = datetime.now(MADRID_TZ).date().isoformat()
 
-    resultado = {
-        "fecha": fecha_iso,
-        "omie": scrape_omie(),
-        "mibgas": scrape_mibgas(),
-        "omip": scrape_omip(),
-        "investing": scrape_investing(),
+    if not forzar and ya_se_ejecuto_hoy(fecha_iso):
+        print(f"[INFO] Ya se generó el snapshot de hoy ({fecha_iso}); no se repite. Saliendo.")
+        return
+
+    migrar_historico_si_hace_falta()
+    historico = cargar_historico()
+
+    resultado_fuentes = {
+        "omie": scrape_con_fallback("OMIE", scrape_omie),
+        "mibgas": scrape_con_fallback("MIBGAS", scrape_mibgas),
+        "omip": scrape_con_fallback("OMIP", scrape_omip),
+        "yahoo": scrape_yahoo(),
+        "co2": scrape_co2_safe(),
     }
 
+    filas = construir_filas(resultado_fuentes, historico, fecha_iso)
+
+    resultado = {"fecha": fecha_iso, **resultado_fuentes, "filas": filas}
+
     guardar_snapshot(resultado, fecha_iso)
-    append_history(resultado, fecha_iso)
+    append_history(filas, fecha_iso)
 
 
 if __name__ == "__main__":
