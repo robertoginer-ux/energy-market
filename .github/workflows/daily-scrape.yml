@@ -1,15 +1,12 @@
 name: Scraping diario de mercados energéticos
 
 on:
-  schedule:
-    # IMPORTANTE: GitHub Actions no entiende estaciones del año — un cron
-    # programado "para verano" y otro "para invierno" se ejecutan LOS DOS
-    # todos los días (esto causó el envío duplicado del email). Por eso
-    # dejamos un único disparador: como el script ya no depende de la hora
-    # exacta (ver ya_se_ejecuto_hoy en scrape_markets.py), un solo cron es
-    # suficiente y elimina el riesgo de duplicados.
-    - cron: '13 3 * * *'   # 4:13 CET (invierno) / 5:13 CEST (verano)
-  workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions
+  # Se elimina el "schedule" de GitHub: ahora el único disparador diario es
+  # cron-job.org, que llama a este mismo workflow_dispatch por API a las
+  # 7:05h Madrid. Tener también el cron interno de GitHub causaba envíos
+  # duplicados, porque cualquier disparo por workflow_dispatch fuerza la
+  # ejecución sin comprobar si ya se hizo hoy (ver FORCE_RUN más abajo).
+  workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions, o vía API (cron-job.org)
 
 permissions:
   contents: write
@@ -31,9 +28,12 @@ jobs:
 
       - name: Ejecutar scraper
         env:
-          # Si se lanza manualmente (workflow_dispatch), forzamos la ejecución
-          # aunque no sean exactamente las 7:00h.
-          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+          # workflow_dispatch (tanto manual como el de cron-job.org) fuerza
+          # la ejecución sin comprobar si ya hay snapshot de hoy. Como ahora
+          # solo hay un disparador diario, esto es seguro; si algún día se
+          # relanza manualmente el mismo día ya ejecutado, se reenviaría el
+          # email (asúmelo si pruebas a mano el mismo día).
+          FORCE_RUN: '1'
         run: python scrape_markets.py
 
       - name: Actualizar Google Sheet
