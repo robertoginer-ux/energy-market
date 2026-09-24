@@ -7,9 +7,10 @@ Requiere la variable de entorno GMAIL_APP_PASSWORD (contraseña de aplicación
 de roberto.giner@octoenergy.com). Los destinatarios son el grupo de
 distribución smt_spain@octoenergy.com más varias direcciones individuales.
 
-Requiere también los ficheros assets/logo.svg y assets/constantine_casual.png
+Requiere también los ficheros assets/logo.png y assets/constantine_casual.png
 (se commitean al repo junto al script; no hace falta descargarlos en cada
-ejecución).
+ejecución). IMPORTANTE: el logo es PNG, no SVG — los clientes de email no
+soportan bien el SVG inline y llega a romper el email entero.
 
 Uso:
     python send_email.py [FECHA_ISO]
@@ -82,15 +83,13 @@ def fmt_numero(valor, decimales=2) -> str:
     return texto.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def cargar_logo_svg() -> str:
-    """Lee el logo SVG oficial y lo ajusta para que herede el tamaño por CSS."""
-    path = os.path.join(ASSETS_DIR, "logo.svg")
-    with open(path, encoding="utf-8") as f:
-        svg = f.read()
-    return svg.replace(
-        '<svg width="1293" height="200" viewBox="0 0 1293 200"',
-        '<svg viewBox="0 0 1293 200" style="height:28px;width:auto;display:block;"',
-    )
+def cargar_logo_b64() -> str:
+    """Lee el logo en PNG (no SVG: los clientes de email no soportan bien el
+    SVG inline, y llega a romper el email por completo) y lo codifica en
+    base64 para incrustarlo como <img>, igual que Constantine."""
+    path = os.path.join(ASSETS_DIR, "logo.png")
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
 
 
 def cargar_constantine_b64() -> str:
@@ -187,7 +186,7 @@ def construir_html(resultado: dict) -> str:
         construir_seccion(fuente, grupos[fuente]) for fuente in orden_fuentes if fuente in grupos
     )
 
-    logo_svg = cargar_logo_svg()
+    logo_b64 = cargar_logo_b64()
     constantine_b64 = cargar_constantine_b64()
 
     return f"""<!DOCTYPE html>
@@ -206,7 +205,7 @@ def construir_html(resultado: dict) -> str:
           <tr>
             <td style="padding:26px 32px 18px 32px;border-bottom:1px solid rgba(88,64,255,0.25);">
               <table width="100%" role="presentation"><tr>
-                <td>{logo_svg}</td>
+                <td><img src="data:image/png;base64,{logo_b64}" alt="octopus energy" style="height:26px;width:auto;display:block;border:0;"></td>
                 <td align="right" style="color:#A49FC6;font-size:13px;vertical-align:middle;">{fecha_fmt}</td>
               </tr></table>
               <div style="width:56px;height:3px;background:linear-gradient(90deg,#5840FF 0%,#FF039F 100%);margin-top:16px;"></div>
