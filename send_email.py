@@ -38,7 +38,12 @@ ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 GMAIL_USER = "roberto.giner@octoenergy.com"  # remitente real (cuenta de Gmail con contraseña de aplicación)
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 DESTINATARIOS = [
-    "rginerh@gmail.com",
+    "smt_spain@octoenergy.com",
+    "giampaolo.panizio@octopusenergy.es",
+    "alberto.lopez.hernandez@octopusenergy.es",
+    "andres.gilblanco@octoenergy.com",
+    "oees-oms-ops@octoenergy.com",
+]
 ]
 
 # Ancho fijo (px) de la columna de etiquetas, igual en todas las secciones,
