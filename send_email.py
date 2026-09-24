@@ -41,7 +41,7 @@ DESTINATARIOS = [
     "giampaolo.panizio@octopusenergy.es",
     "alberto.lopez.hernandez@octopusenergy.es",
     "andres.gilblanco@octoenergy.com",
-    "ores-oms-ops@octoenergy.com",
+    "oees-oms-ops@octoenergy.com",
 ]
 
 # Ancho fijo (px) de la columna de etiquetas, igual en todas las secciones,
