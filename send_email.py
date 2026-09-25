@@ -113,8 +113,8 @@ def variacion_celda(fila: dict, fecha_iso_hoy: str) -> str:
         flecha = "▲" if positivo else "▼"
         signo = "+" if positivo else ""
         html = (
-            f'<span style="color:{color};font-weight:700;white-space:nowrap;">'
-            f"{flecha} {signo}{fmt_numero(abs_)} ({signo}{fmt_numero(pct, 1)}%)</span>"
+            f'<span style="color:{color};font-weight:700;">'
+            f"{flecha} {signo}{fmt_numero(abs_)}<br>({signo}{fmt_numero(pct, 1)}%)</span>"
         )
 
     fecha_dato = fila.get("fecha_dato")  # formato DD-MM-YYYY
