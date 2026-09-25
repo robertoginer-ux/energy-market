@@ -2,11 +2,11 @@
   "fecha": "2026-09-25",
   "omie": {
     "fuente": "OMIE",
-    "fecha_texto": "25/09/2026",
-    "precio_medio_es": 158.92,
-    "precio_maximo_es": 287.13,
-    "precio_minimo_es": 19.17,
-    "volumen_gwh_es": 546.0,
+    "fecha_texto": "26/09/2026",
+    "precio_medio_es": 130.62,
+    "precio_maximo_es": 251.08,
+    "precio_minimo_es": 0.45,
+    "volumen_gwh_es": 422.0,
     "url": "https://www.omie.es/"
   },
   "mibgas": {
@@ -52,8 +52,8 @@
       "fuente": "Yahoo Finance",
       "activo": "Brent",
       "ticker": "BZ=F",
-      "precio_actual": 105.69,
-      "precio_cierre_anterior": 106.6,
+      "precio_actual": 98.34,
+      "precio_cierre_anterior": 100.22,
       "moneda": "USD",
       "url": "https://finance.yahoo.com/quote/BZ=F/"
     },
@@ -70,42 +70,42 @@
   "co2": {
     "fuente": "EEX",
     "activo": "CO2",
-    "precio_actual": 86.05,
-    "fecha_dato": "24-09-2026",
+    "precio_actual": 85.5,
+    "fecha_dato": "25-09-2026",
     "url": "https://www.eex.com/en/markets/environmental-markets/eu-ets-auctions"
   },
   "filas": [
     {
       "fuente": "OMIE",
       "variable": "precio_medio_es",
-      "valor": 158.92,
+      "valor": 130.62,
       "valor_anterior": 157.24,
-      "variacion_abs": 1.6799999999999784,
-      "variacion_pct": 1.068430424828274
+      "variacion_abs": -26.620000000000005,
+      "variacion_pct": -16.92953446960061
     },
     {
       "fuente": "OMIE",
       "variable": "precio_maximo_es",
-      "valor": 287.13,
+      "valor": 251.08,
       "valor_anterior": 288.23,
-      "variacion_abs": -1.1000000000000227,
-      "variacion_pct": -0.38163966276932404
+      "variacion_abs": -37.150000000000006,
+      "variacion_pct": -12.889012247163725
     },
     {
       "fuente": "OMIE",
       "variable": "precio_minimo_es",
-      "valor": 19.17,
+      "valor": 0.45,
       "valor_anterior": 17.62,
-      "variacion_abs": 1.5500000000000007,
-      "variacion_pct": 8.796821793416576
+      "variacion_abs": -17.17,
+      "variacion_pct": -97.4460839954597
     },
     {
       "fuente": "OMIE",
       "variable": "volumen_gwh_es",
-      "valor": 546.0,
+      "valor": 422.0,
       "valor_anterior": 541.0,
-      "variacion_abs": 5.0,
-      "variacion_pct": 0.9242144177449169
+      "variacion_abs": -119.0,
+      "variacion_pct": -21.996303142329023
     },
     {
       "fuente": "MIBGAS",
@@ -198,10 +198,10 @@
     {
       "fuente": "Yahoo",
       "variable": "Brent",
-      "valor": 105.69,
+      "valor": 98.34,
       "valor_anterior": 98.7,
-      "variacion_abs": 6.989999999999995,
-      "variacion_pct": 7.082066869300907
+      "variacion_abs": -0.35999999999999943,
+      "variacion_pct": -0.36474164133738546
     },
     {
       "fuente": "Yahoo",
@@ -214,11 +214,11 @@
     {
       "fuente": "EEX",
       "variable": "CO2",
-      "valor": 86.05,
+      "valor": 85.5,
       "valor_anterior": 85.53,
-      "variacion_abs": 0.519999999999996,
-      "variacion_pct": 0.6079738103589337,
-      "fecha_dato": "24-09-2026"
+      "variacion_abs": -0.030000000000001137,
+      "variacion_pct": -0.03507541213609393,
+      "fecha_dato": "25-09-2026"
     }
   ]
 }
