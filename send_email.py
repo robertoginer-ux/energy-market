@@ -9,8 +9,7 @@ distribución smt_spain@octoenergy.com más varias direcciones individuales.
 
 Requiere también los ficheros assets/logo.png y assets/constantine_casual.png
 (se commitean al repo junto al script; no hace falta descargarlos en cada
-ejecución). IMPORTANTE: el logo es PNG, no SVG — los clientes de email no
-soportan bien el SVG inline y llega a romper el email entero.
+ejecución).
 
 Uso:
     python send_email.py [FECHA_ISO]
@@ -45,10 +44,14 @@ DESTINATARIOS = [
     "oees-oms-ops@octoenergy.com",
 ]
 
-# Ancho fijo (px) de la columna de etiquetas, igual en todas las secciones,
-# para que valor y variación queden alineados verticalmente entre secciones
-# con nombres de distinta longitud (ej. "PVB D+1" vs "Precio mínimo España").
-LABEL_WIDTH_PX = 230
+# Ancho de la columna de etiquetas EN PORCENTAJE (no en px fijos), igual en
+# todas las secciones. Con px fijos, en pantallas estrechas (móvil) casi no
+# queda sitio para las columnas de valor/variación y el texto se parte
+# carácter a carácter. En %, las 3 columnas escalan proporcionalmente sea
+# cual sea el ancho real de la pantalla.
+LABEL_WIDTH_PCT = 44
+VALUE_WIDTH_PCT = 28
+VARIACION_WIDTH_PCT = 28
 
 # Nombres bonitos para las variables, para que el email sea legible sin jerga
 ETIQUETAS = {
@@ -139,9 +142,9 @@ def construir_seccion(nombre: str, filas: list) -> str:
         valor_txt = fmt_numero(fila["valor"]) if fila["valor"] is not None else "—"
         filas_html += f"""
         <tr style="border-bottom:1px solid rgba(88,64,255,0.2);">
-          <td style="padding:11px 14px;color:#DCDDFF;font-size:15px;width:{LABEL_WIDTH_PX}px;">{etiqueta(fila['variable'])}</td>
-          <td style="padding:11px 14px;color:#FCFFFF;font-size:16px;font-weight:700;text-align:right;">{valor_txt}</td>
-          <td style="padding:11px 14px;font-size:14px;text-align:right;">{variacion_celda(fila, fila.get('_fecha_iso_hoy'))}</td>
+          <td style="padding:11px 10px;color:#DCDDFF;font-size:15px;width:{LABEL_WIDTH_PCT}%;">{etiqueta(fila['variable'])}</td>
+          <td style="padding:11px 8px;color:#FCFFFF;font-size:16px;font-weight:700;text-align:right;white-space:nowrap;width:{VALUE_WIDTH_PCT}%;">{valor_txt}</td>
+          <td style="padding:11px 10px;font-size:14px;text-align:right;width:{VARIACION_WIDTH_PCT}%;">{variacion_celda(fila, fila.get('_fecha_iso_hoy'))}</td>
         </tr>"""
 
     return f"""
@@ -157,9 +160,9 @@ def construir_seccion(nombre: str, filas: list) -> str:
       <td style="padding:0 24px 8px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(45,26,131,0.6);border:1px solid rgba(88,64,255,0.3);border-radius:12px;overflow:hidden;table-layout:fixed;">
           <colgroup>
-            <col style="width:{LABEL_WIDTH_PX}px;">
-            <col>
-            <col>
+            <col style="width:{LABEL_WIDTH_PCT}%;">
+            <col style="width:{VALUE_WIDTH_PCT}%;">
+            <col style="width:{VARIACION_WIDTH_PCT}%;">
           </colgroup>
           {filas_html}
         </table>
