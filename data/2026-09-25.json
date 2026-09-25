@@ -52,7 +52,7 @@
       "fuente": "Yahoo Finance",
       "activo": "Brent",
       "ticker": "BZ=F",
-      "precio_actual": 98.34,
+      "precio_actual": 98.33,
       "precio_cierre_anterior": 100.22,
       "moneda": "USD",
       "url": "https://finance.yahoo.com/quote/BZ=F/"
@@ -198,10 +198,10 @@
     {
       "fuente": "Yahoo",
       "variable": "Brent",
-      "valor": 98.34,
+      "valor": 98.33,
       "valor_anterior": 98.7,
-      "variacion_abs": -0.35999999999999943,
-      "variacion_pct": -0.36474164133738546
+      "variacion_abs": -0.37000000000000455,
+      "variacion_pct": -0.37487335359676244
     },
     {
       "fuente": "Yahoo",
