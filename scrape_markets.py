@@ -167,6 +167,37 @@ def scrape_omip() -> dict:
     yr_27 = buscar_precio("YR-27")
     yr_28 = buscar_precio("YR-28")
 
+    # El trimestre en curva ("Q4-26" etc.) rota de la lista rápida
+    # "Próximos Contratos" a la tabla detallada "Power Futures Reference
+    # Prices" en cuanto empieza a ser el trimestre vigente (esto pasó el
+    # 30/09/2026, justo antes de que empezara Q4-26 el 01/10). En vez de
+    # dejarlo en blanco, buscamos ahí como respaldo: esa tabla etiqueta
+    # explícitamente cada contrato (con el prefijo FTB = España, para no
+    # confundirlo con FPB/Portugal, FFB/Francia o FDB/Alemania).
+    if q4_26 is None:
+        m_detalle = re.search(
+            r"FTB\s+Q4-26\s+€([\-\d.,]+)\s*Eur/MWh\s*"
+            r"Settlement Price for Spain Power Base Futures Quarter Contract",
+            text,
+        )
+        q4_26 = to_float(m_detalle.group(1)) if m_detalle else None
+
+    if yr_27 is None:
+        m_detalle = re.search(
+            r"FTB\s+YR-27\s+€([\-\d.,]+)\s*Eur/MWh\s*"
+            r"Settlement Price for Spain Power Base Futures Year Contract",
+            text,
+        )
+        yr_27 = to_float(m_detalle.group(1)) if m_detalle else None
+
+    if yr_28 is None:
+        m_detalle = re.search(
+            r"FTB\s+YR-28\s+€([\-\d.,]+)\s*Eur/MWh\s*"
+            r"Settlement Price for Spain Power Base Futures Year Contract",
+            text,
+        )
+        yr_28 = to_float(m_detalle.group(1)) if m_detalle else None
+
     # Meses individuales cotizando actualmente (rolling, típicamente 3-6 meses vista)
     meses_regex = re.findall(r"\b([A-Z][a-z]{2}-\d{2})\s+€([\-\d.,]+)", ftb_section)
     # Quitamos duplicados manteniendo el primer valor de cada mes
