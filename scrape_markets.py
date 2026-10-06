@@ -149,6 +149,24 @@ def scrape_mibgas() -> dict:
 # ---------------------------------------------------------------------------
 # OMIP
 # ---------------------------------------------------------------------------
+def trimestre_label(fecha, offset: int) -> str:
+    """Devuelve la etiqueta de trimestre tipo 'Q1-27' para 'offset'
+    trimestres a partir del trimestre natural en el que cae 'fecha'.
+
+    OMIP deja de cotizar un trimestre como futuro en cuanto EMPIEZA (pasa a
+    ser el trimestre en curso, ya no un futuro) — por eso el "trimestre
+    frente" que de verdad cotiza es siempre el trimestre NATURAL siguiente
+    al actual (offset=1), y el "siguiente" es el de después (offset=2).
+    """
+    q = (fecha.month - 1) // 3 + 1
+    y = fecha.year
+    q += offset
+    while q > 4:
+        q -= 4
+        y += 1
+    return f"Q{q}-{y % 100:02d}"
+
+
 def scrape_omip() -> dict:
     url = "https://www.omip.pt/es/plazo-hoy"
     text = get_text(url)
@@ -162,41 +180,37 @@ def scrape_omip() -> dict:
         m = re.search(re.escape(etiqueta) + r"\s+€([\-\d.,]+)", ftb_section)
         return to_float(m.group(1)) if m else None
 
+    def buscar_precio_con_respaldo(etiqueta: str, tipo_contrato: str):
+        """Busca primero en la lista rápida "Próximos Contratos"/"Contratos
+        Siguientes"; si el contrato ha rotado fuera de ahí (p.ej. un
+        trimestre que acaba de empezar a cotizar, o un año que deja de ser
+        "el próximo"), lo busca como respaldo en la tabla detallada "Power
+        Futures Reference Prices", que etiqueta explícitamente cada
+        contrato vigente con el prefijo FTB (España), para no confundirlo
+        con FPB/Portugal, FFB/Francia o FDB/Alemania."""
+        valor = buscar_precio(etiqueta)
+        if valor is not None:
+            return valor
+        m_detalle = re.search(
+            r"FTB\s+" + re.escape(etiqueta) + r"\s+€([\-\d.,]+)\s*Eur/MWh\s*"
+            r"Settlement Price for Spain Power Base Futures " + tipo_contrato + r" Contract",
+            text,
+        )
+        return to_float(m_detalle.group(1)) if m_detalle else None
+
     spel_base_spot = buscar_precio("SPEL BASE")
-    q4_26 = buscar_precio("Q4-26")
-    yr_27 = buscar_precio("YR-27")
-    yr_28 = buscar_precio("YR-28")
+    yr_27 = buscar_precio_con_respaldo("YR-27", "Year")
+    yr_28 = buscar_precio_con_respaldo("YR-28", "Year")
 
-    # El trimestre en curva ("Q4-26" etc.) rota de la lista rápida
-    # "Próximos Contratos" a la tabla detallada "Power Futures Reference
-    # Prices" en cuanto empieza a ser el trimestre vigente (esto pasó el
-    # 30/09/2026, justo antes de que empezara Q4-26 el 01/10). En vez de
-    # dejarlo en blanco, buscamos ahí como respaldo: esa tabla etiqueta
-    # explícitamente cada contrato (con el prefijo FTB = España, para no
-    # confundirlo con FPB/Portugal, FFB/Francia o FDB/Alemania).
-    if q4_26 is None:
-        m_detalle = re.search(
-            r"FTB\s+Q4-26\s+€([\-\d.,]+)\s*Eur/MWh\s*"
-            r"Settlement Price for Spain Power Base Futures Quarter Contract",
-            text,
-        )
-        q4_26 = to_float(m_detalle.group(1)) if m_detalle else None
-
-    if yr_27 is None:
-        m_detalle = re.search(
-            r"FTB\s+YR-27\s+€([\-\d.,]+)\s*Eur/MWh\s*"
-            r"Settlement Price for Spain Power Base Futures Year Contract",
-            text,
-        )
-        yr_27 = to_float(m_detalle.group(1)) if m_detalle else None
-
-    if yr_28 is None:
-        m_detalle = re.search(
-            r"FTB\s+YR-28\s+€([\-\d.,]+)\s*Eur/MWh\s*"
-            r"Settlement Price for Spain Power Base Futures Year Contract",
-            text,
-        )
-        yr_28 = to_float(m_detalle.group(1)) if m_detalle else None
+    # Trimestres: en vez de tener un trimestre fijo (p.ej. "Q4-26"), que deja
+    # de cotizar en cuanto empieza, calculamos cada día qué 2 trimestres son
+    # realmente los que están cotizando ahora mismo ("frente" y "siguiente")
+    # y los seguimos automáticamente, sea cual sea el momento del año.
+    hoy = datetime.now(MADRID_TZ).date()
+    trimestre_frente_label = trimestre_label(hoy, 1)
+    trimestre_siguiente_label = trimestre_label(hoy, 2)
+    trimestre_frente_precio = buscar_precio_con_respaldo(trimestre_frente_label, "Quarter")
+    trimestre_siguiente_precio = buscar_precio_con_respaldo(trimestre_siguiente_label, "Quarter")
 
     # Meses individuales cotizando actualmente (rolling, típicamente 3-6 meses vista)
     meses_regex = re.findall(r"\b([A-Z][a-z]{2}-\d{2})\s+€([\-\d.,]+)", ftb_section)
@@ -209,9 +223,12 @@ def scrape_omip() -> dict:
     return {
         "fuente": "OMIP",
         "spel_base_spot": spel_base_spot,
-        "q4_26": q4_26,
         "yr_27": yr_27,  # equivalente a "Cal-27"
         "yr_28": yr_28,  # equivalente a "Cal-28"
+        "trimestre_frente_label": trimestre_frente_label,
+        "trimestre_frente_precio": trimestre_frente_precio,
+        "trimestre_siguiente_label": trimestre_siguiente_label,
+        "trimestre_siguiente_precio": trimestre_siguiente_precio,
         "meses": meses,  # dict {"Oct-26": 138.75, "Nov-26": 156.0, ...}
         "url": url,
     }
@@ -420,9 +437,19 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
 
     omip = resultado_fuentes["omip"]
     agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
-    agregar("OMIP", "q4_26", omip.get("q4_26"))
     agregar("OMIP", "yr_27", omip.get("yr_27"))
     agregar("OMIP", "yr_28", omip.get("yr_28"))
+    # Los trimestres se nombran por su etiqueta real (igual que los meses),
+    # así que al rotar de trimestre se crea una fila nueva automáticamente
+    # (ej. "trimestre_Q1-27", luego "trimestre_Q2-27"...) en vez de
+    # mantener fijo "q4_26" para siempre. Calculamos las etiquetas aquí de
+    # forma independiente (no desde "omip") para que el nombre de la fila
+    # salga bien aunque el scraping de OMIP haya fallado del todo ese día.
+    hoy_fecha = datetime.fromisoformat(fecha_iso).date()
+    trimestre_frente_label = trimestre_label(hoy_fecha, 1)
+    trimestre_siguiente_label = trimestre_label(hoy_fecha, 2)
+    agregar("OMIP", f"trimestre_{trimestre_frente_label}", omip.get("trimestre_frente_precio"))
+    agregar("OMIP", f"trimestre_{trimestre_siguiente_label}", omip.get("trimestre_siguiente_precio"))
     for mes, precio in omip.get("meses", {}).items():
         agregar("OMIP", f"mes_{mes}", precio)
 
@@ -484,14 +511,6 @@ def append_history(filas: list, fecha_iso: str):
 # ---------------------------------------------------------------------------
 # Control de ejecución: una vez al día, sea cuando sea que dispare el cron
 # ---------------------------------------------------------------------------
-# GitHub Actions puede retrasar los cron varias horas en repos con poca
-# actividad (es un comportamiento documentado de GitHub, no un fallo
-# nuestro). Antes comprobábamos "¿son las 7:00h en Madrid?", pero si el cron
-# se disparaba tarde (p.ej. a las 11:17h), el script se cancelaba pensando
-# que aún no tocaba, y ese día no se ejecutaba nada. Ahora, en su lugar,
-# comprobamos simplemente si ya existe un snapshot de hoy: si no existe,
-# ejecutamos (sea la hora que sea); si ya existe, no repetimos (para evitar
-# duplicar el email si los dos cron del día llegan a disparase el mismo día).
 def ya_se_ejecuto_hoy(fecha_iso: str) -> bool:
     return os.path.exists(os.path.join(DATA_DIR, f"{fecha_iso}.json"))
 
