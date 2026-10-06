@@ -3,8 +3,7 @@ Actualiza el Google Sheet de seguimiento de mercados con los datos del día
 (valor + variación respecto al día anterior).
 
 Requiere la variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON con el contenido
-completo del JSON de la cuenta de servicio de Google Cloud (ver README.md
-para cómo crearla y compartir el Sheet con ella).
+completo del JSON de la cuenta de servicio de Google Cloud.
 
 Uso:
     python update_google_sheet.py [FECHA_ISO]
@@ -33,6 +32,11 @@ SPREADSHEET_ID = "1dP12qfP1lUvlGEPcHtKKH_p7gh6hbamBzCosyTQF7LE"
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
+
+# Margen de columnas extra que añadimos cada vez que hay que ampliar la
+# cuadrícula, para no tener que ampliarla cada día (ampliamos de golpe para
+# varios meses vista).
+MARGEN_COLUMNAS = 60
 
 
 def col_to_letter(idx: int) -> str:
@@ -68,6 +72,30 @@ def get_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def asegurar_columnas_suficientes(service, sheet_id: int, columnas_necesarias: int, columnas_actuales: int):
+    """Si la cuadrícula del Sheet no tiene suficientes columnas para la
+    nueva columna que vamos a escribir, la ampliamos primero (si no, la API
+    de Sheets rechaza la escritura con 'exceeds grid limits')."""
+    if columnas_necesarias <= columnas_actuales:
+        return
+    anadir = (columnas_necesarias - columnas_actuales) + MARGEN_COLUMNAS
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=SPREADSHEET_ID,
+        body={
+            "requests": [
+                {
+                    "appendDimension": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "length": anadir,
+                    }
+                }
+            ]
+        },
+    ).execute()
+    print(f"[OK] Cuadrícula ampliada en {anadir} columnas (tenía {columnas_actuales}, hacían falta {columnas_necesarias})")
+
+
 def main():
     fecha_iso = sys.argv[1] if len(sys.argv) > 1 else datetime.now(MADRID_TZ).date().isoformat()
 
@@ -88,12 +116,16 @@ def main():
     service = get_service()
 
     meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-    sheet_title = meta["sheets"][0]["properties"]["title"]
+    hoja_props = meta["sheets"][0]["properties"]
+    sheet_title = hoja_props["title"]
+    sheet_id = hoja_props["sheetId"]
+    columnas_actuales = hoja_props["gridProperties"]["columnCount"]
+    filas_actuales = hoja_props["gridProperties"]["rowCount"]
 
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_title}'!A1:ZZ500")
+        .get(spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_title}'!A1:ZZ{filas_actuales}")
         .execute()
     )
     grid = result.get("values", [])
@@ -118,6 +150,10 @@ def main():
     if col_valor is None:
         col_valor = len(header)
         col_variacion = col_valor + 1
+        # Antes de escribir, nos aseguramos de que la cuadrícula tenga
+        # físicamente sitio para estas 2 columnas nuevas (si no, la API da
+        # error "exceeds grid limits").
+        asegurar_columnas_suficientes(service, sheet_id, col_variacion + 1, columnas_actuales)
         updates.append(
             {"range": f"'{sheet_title}'!{col_to_letter(col_valor)}{header_row_idx + 1}", "values": [[fecha_ddmmyyyy]]}
         )
