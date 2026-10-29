@@ -63,6 +63,11 @@ def fmt_variacion(fila: dict, fecha_ddmmyyyy_hoy: str) -> str:
         # publicación de la fuente (p.ej. fin de semana): lo dejamos anotado.
         partes.append(f"[dato {fecha_dato}]")
 
+    if fila.get("aviso"):
+        # Aviso de fuente "congelada" (ver scrape_markets.py), para que se
+        # vea también en el Sheet y no solo en el email.
+        partes.append(f"[{fila['aviso']}]")
+
     return " ".join(partes)
 
 
