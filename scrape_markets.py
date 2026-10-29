@@ -14,10 +14,14 @@ El script:
      JSON público de Yahoo Finance (Brent/TTF), o el Excel oficial de EEX (CO2).
   3. Calcula la variación (absoluta y %) de cada variable respecto al día
      anterior, usando el histórico ya guardado.
-  4. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
+  4. Detecta si OMIP lleva varios días seguidos devolviendo el mismo valor
+     (indicio de que su propia web se ha quedado "congelada", algo que ya
+     ha pasado — ver detectar_omip_congelado más abajo) y lo marca como
+     aviso en vez de fallar en silencio.
+  5. Guarda un snapshot diario en data/YYYY-MM-DD.json (incluye "filas", la
      lista con valor + variación de cada variable — la usan también
      update_google_sheet.py y send_email.py).
-  5. Añade esas mismas filas a data/history.csv.
+  6. Añade esas mismas filas a data/history.csv.
 
 Solo se ejecuta una vez al día: si ya existe el snapshot de hoy, no repite
 (esto es importante porque GitHub Actions puede retrasar el cron varias
@@ -51,6 +55,13 @@ HEADERS = {
 TIMEOUT = 30
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+# Si el precio spot de OMIP (el indicador más representativo de que su web
+# está "viva") lleva este número de días seguidos EXACTAMENTE igual
+# (incluido hoy), lo marcamos como aviso: ya nos pasó que la propia web de
+# OMIP se quedó varios días mostrando datos del 16-17 de octubre a todo el
+# mundo, sin que fuera un fallo de nuestro scraper.
+DIAS_CONGELADO_AVISO = 3
 
 
 def to_float(value: str):
@@ -406,6 +417,26 @@ def calcular_variacion(valor_hoy, valor_ayer):
     return abs_, pct
 
 
+def contar_dias_consecutivos_iguales(historico: dict, fuente: str, variable: str, valor_hoy, fecha_hoy: str) -> int:
+    """Cuenta cuántos días seguidos (terminando hoy, incluido) (fuente,
+    variable) tiene EXACTAMENTE el mismo valor. Se usa para detectar que una
+    fuente se ha quedado "congelada" (p.ej. OMIP mostrando datos de hace una
+    semana a todo el mundo, no solo a nosotros)."""
+    if valor_hoy is None:
+        return 0
+    registros = sorted(
+        [(f, v) for f, v in historico.get((fuente, variable), []) if f < fecha_hoy],
+        key=lambda x: x[0],
+    )
+    dias = 1  # hoy cuenta como 1 día con ese valor
+    for _, valor in reversed(registros):
+        if valor == valor_hoy:
+            dias += 1
+        else:
+            break
+    return dias
+
+
 def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) -> list:
     """Lista plana [{fuente, variable, valor, valor_anterior, variacion_abs,
     variacion_pct}, ...] — la usan el CSV histórico, el snapshot JSON, el
@@ -436,15 +467,31 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
     agregar("MIBGAS", "pvb_d1", mibgas.get("precio_eur_mwh"))
 
     omip = resultado_fuentes["omip"]
-    agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
+
+    # Detección de "OMIP congelado": si el spot (el dato más representativo
+    # de que la web de OMIP está realmente viva) lleva varios días seguidos
+    # exactamente igual, avisamos — esto ya pasó (la propia web de OMIP se
+    # quedó varios días mostrando datos antiguos a todo el mundo, no era un
+    # fallo de nuestro scraper).
+    spel_hoy = omip.get("spel_base_spot")
+    dias_congelado = contar_dias_consecutivos_iguales(historico, "OMIP", "spel_base_spot", spel_hoy, fecha_iso)
+    aviso_omip = None
+    if dias_congelado >= DIAS_CONGELADO_AVISO:
+        aviso_omip = (
+            f"⚠️ OMIP lleva {dias_congelado} días seguidos con el mismo valor "
+            f"(probable fallo en la web de OMIP, no en el scraper)"
+        )
+        print(f"[AVISO] {aviso_omip}")
+
+    agregar("OMIP", "spel_base_spot", spel_hoy, aviso=aviso_omip)
     agregar("OMIP", "yr_27", omip.get("yr_27"))
     agregar("OMIP", "yr_28", omip.get("yr_28"))
     # Los trimestres se nombran por su etiqueta real (igual que los meses),
     # así que al rotar de trimestre se crea una fila nueva automáticamente
     # (ej. "trimestre_Q1-27", luego "trimestre_Q2-27"...) en vez de
-    # mantener fijo "q4_26" para siempre. Calculamos las etiquetas aquí de
-    # forma independiente (no desde "omip") para que el nombre de la fila
-    # salga bien aunque el scraping de OMIP haya fallado del todo ese día.
+    # mantener fijo un trimestre para siempre. Calculamos las etiquetas aquí
+    # de forma independiente (no desde "omip") para que el nombre de la
+    # fila salga bien aunque el scraping de OMIP haya fallado del todo ese día.
     hoy_fecha = datetime.fromisoformat(fecha_iso).date()
     trimestre_frente_label = trimestre_label(hoy_fecha, 1)
     trimestre_siguiente_label = trimestre_label(hoy_fecha, 2)
