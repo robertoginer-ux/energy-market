@@ -61,7 +61,6 @@ ETIQUETAS = {
     "volumen_gwh_es": "Volumen negociado (GWh)",
     "pvb_d1": "PVB D+1",
     "spel_base_spot": "Spot Base (SPEL)",
-    "q4_26": "Futuro Q4-26",
     "yr_27": "Futuro Cal-27 (YR-27)",
     "yr_28": "Futuro Cal-28 (YR-28)",
     "Brent": "Brent",
@@ -75,6 +74,8 @@ def etiqueta(variable: str) -> str:
         return ETIQUETAS[variable]
     if variable.startswith("mes_"):
         return f"Futuro {variable[4:]}"
+    if variable.startswith("trimestre_"):
+        return f"Futuro {variable[len('trimestre_'):]}"
     return variable
 
 
@@ -137,6 +138,21 @@ def variacion_celda(fila: dict, fecha_iso_hoy: str) -> str:
 
 
 def construir_seccion(nombre: str, filas: list) -> str:
+    # Si alguna fila de esta sección trae un "aviso" (ej. OMIP congelado),
+    # lo mostramos como un banner destacado justo encima de la tabla, en vez
+    # de repetirlo en cada fila.
+    aviso = next((f.get("aviso") for f in filas if f.get("aviso")), None)
+    aviso_html = ""
+    if aviso:
+        aviso_html = f"""
+        <tr>
+          <td style="padding:0 24px 8px 24px;">
+            <div style="background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.4);border-radius:8px;padding:8px 12px;color:#FFC107;font-size:12px;font-weight:600;">
+              {aviso}
+            </div>
+          </td>
+        </tr>"""
+
     filas_html = ""
     for fila in filas:
         valor_txt = fmt_numero(fila["valor"]) if fila["valor"] is not None else "—"
@@ -156,6 +172,7 @@ def construir_seccion(nombre: str, filas: list) -> str:
         </tr></table>
       </td>
     </tr>
+    {aviso_html}
     <tr>
       <td style="padding:0 24px 8px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(45,26,131,0.6);border:1px solid rgba(88,64,255,0.3);border-radius:12px;overflow:hidden;table-layout:fixed;">
