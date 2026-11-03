@@ -56,12 +56,13 @@ TIMEOUT = 30
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-# Si el precio spot de OMIP (el indicador más representativo de que su web
-# está "viva") lleva este número de días seguidos EXACTAMENTE igual
-# (incluido hoy), lo marcamos como aviso: ya nos pasó que la propia web de
-# OMIP se quedó varios días mostrando datos del 16-17 de octubre a todo el
-# mundo, sin que fuera un fallo de nuestro scraper.
-DIAS_CONGELADO_AVISO = 3
+# Si el futuro YR-27 de OMIP lleva este número de días seguidos
+# EXACTAMENTE igual (incluido hoy), lo marcamos como aviso: ya ha pasado
+# dos veces que la propia tabla de "Power Futures Reference Prices" de
+# OMIP se queda parada varios días (mientras que el SPOT sigue
+# actualizándose con normalidad) — por eso vigilamos un futuro (YR-27), no
+# el spot, que es justo la parte que NO se entera de que algo va mal.
+DIAS_CONGELADO_AVISO = 2
 
 
 def to_float(value: str):
@@ -468,23 +469,26 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
 
     omip = resultado_fuentes["omip"]
 
-    # Detección de "OMIP congelado": si el spot (el dato más representativo
-    # de que la web de OMIP está realmente viva) lleva varios días seguidos
-    # exactamente igual, avisamos — esto ya pasó (la propia web de OMIP se
-    # quedó varios días mostrando datos antiguos a todo el mundo, no era un
-    # fallo de nuestro scraper).
-    spel_hoy = omip.get("spel_base_spot")
-    dias_congelado = contar_dias_consecutivos_iguales(historico, "OMIP", "spel_base_spot", spel_hoy, fecha_iso)
+    # Detección de "OMIP congelado": vigilamos el futuro YR-27 (no el spot).
+    # Confirmado el 03/11/2026 mirando la web en directo: la tabla "Power
+    # Futures Reference Prices" de OMIP (de donde salen YR-27, YR-28, los
+    # trimestres y los meses) se queda parada varios días de vez en cuando,
+    # mientras que el "Power Spot Indexes" (spel_base_spot) sigue
+    # actualizándose con normalidad — por eso vigilar el spot no detectaba
+    # nada. YR-27 es un buen indicador porque cambia prácticamente cada día.
+    yr_27_hoy = omip.get("yr_27")
+    dias_congelado = contar_dias_consecutivos_iguales(historico, "OMIP", "yr_27", yr_27_hoy, fecha_iso)
     aviso_omip = None
     if dias_congelado >= DIAS_CONGELADO_AVISO:
         aviso_omip = (
-            f"⚠️ OMIP lleva {dias_congelado} días seguidos con el mismo valor "
-            f"(probable fallo en la web de OMIP, no en el scraper)"
+            f"⚠️ Los futuros de OMIP (YR-27, YR-28, trimestres y meses) llevan {dias_congelado} "
+            f"días seguidos sin cambiar — probable fallo en la tabla de 'Power Futures Reference "
+            f"Prices' de OMIP (el spot sí se actualiza con normalidad), no en el scraper"
         )
         print(f"[AVISO] {aviso_omip}")
 
-    agregar("OMIP", "spel_base_spot", spel_hoy, aviso=aviso_omip)
-    agregar("OMIP", "yr_27", omip.get("yr_27"))
+    agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
+    agregar("OMIP", "yr_27", yr_27_hoy, aviso=aviso_omip)
     agregar("OMIP", "yr_28", omip.get("yr_28"))
     # Los trimestres se nombran por su etiqueta real (igual que los meses),
     # así que al rotar de trimestre se crea una fila nueva automáticamente
