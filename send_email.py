@@ -283,6 +283,13 @@ def enviar(html: str, fecha_iso: str):
 def main():
     fecha_iso = sys.argv[1] if len(sys.argv) > 1 else datetime.now(MADRID_TZ).date().isoformat()
 
+    # Los domingos no se envía email (decisión de Roberto, 14/11/2026): el
+    # sábado no cotizan los futuros y OMIE/MIBGAS aportan poco. El scraper,
+    # el Google Sheet y el commit de datos siguen ejecutándose ese día.
+    if datetime.fromisoformat(fecha_iso).weekday() == 6:
+        print(f"[INFO] {fecha_iso} es domingo: no se envía email.")
+        return
+
     resultado = cargar_snapshot(fecha_iso)
     if resultado is None:
         print(f"[AVISO] No existe snapshot para {fecha_iso}. No se envía email.")
