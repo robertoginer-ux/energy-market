@@ -1,0 +1,40 @@
+name: Reenviar email de un día
+
+# Solo envía el email a partir del snapshot ya guardado en data/AAAA-MM-DD.json.
+# No vuelve a scrapear, no toca el Google Sheet ni hace commit (así no se
+# duplican filas en history.csv). Útil si el run diario falló antes del email.
+# OJO: envía a la lista completa de DESTINATARIOS de send_email.py.
+on:
+  workflow_dispatch:
+    inputs:
+      fecha:
+        description: "Fecha del snapshot a enviar (AAAA-MM-DD)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Comprobar que existe el snapshot
+        env:
+          FECHA: ${{ inputs.fecha }}
+        run: |
+          [[ "$FECHA" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "Fecha inválida: $FECHA"; exit 1; }
+          test -f "data/$FECHA.json" || { echo "No existe data/$FECHA.json"; exit 1; }
+
+      - name: Enviar email
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          FECHA: ${{ inputs.fecha }}
+        run: python send_email.py "$FECHA"
