@@ -272,6 +272,14 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
 <title>Radar de mercados</title>
 <style>
   :root {{ color-scheme: light dark; supported-color-schemes: light dark; }}
+  /* Outlook (iPhone, Mac, web) en modo oscuro reescribe los colores de fondo y
+     marca el HTML con data-ogsb; estas reglas vuelven a poner el fondo oscuro. */
+  [data-ogsb] .bg-ext, [data-ogsb] body.bg-ext {{ background-color:{NOCHE} !important; }}
+  [data-ogsb] .bg-email {{ background-color:{SIPHON} !important; }}
+  @media (prefers-color-scheme: dark) {{
+    .bg-ext {{ background-color:{NOCHE} !important; }}
+    .bg-email {{ background-color:{SIPHON} !important; }}
+  }}
   @media (max-width:480px) {{
     .kpi {{ padding:0 3px !important; }}
     .kpi-in {{ padding:12px 10px 10px 10px !important; }}
@@ -279,10 +287,10 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
     .kpi-meta {{ font-size:10px !important; }}
   }}
 </style></head>
-<body style="margin:0;padding:0;{fondo(NOCHE, src['fondo_exterior'])}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" background="{src['fondo_exterior']}" style="{fondo(NOCHE, src['fondo_exterior'])}">
+<body class="bg-ext" style="margin:0;padding:0;{fondo(NOCHE, src['fondo_exterior'])}">
+<table class="bg-ext" role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" background="{src['fondo_exterior']}" style="{fondo(NOCHE, src['fondo_exterior'])}">
 <tr><td align="center" style="padding:24px 8px;">
-  <table role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" background="{src['fondo_email']}" style="max-width:640px;width:100%;{fondo(SIPHON, src['fondo_email'])}border-radius:16px;">
+  <table class="bg-email" role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" background="{src['fondo_email']}" style="max-width:640px;width:100%;{fondo(SIPHON, src['fondo_email'])}border-radius:16px;">
     <tr><td style="padding:24px 24px 0 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
         <td><img src="{src['logo']}" alt="octopus energy" height="24" style="height:24px;width:auto;display:block;border:0;"></td>
