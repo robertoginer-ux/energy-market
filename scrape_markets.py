@@ -80,11 +80,54 @@ def to_float(value: str):
         return None
 
 
-def get_text(url: str) -> str:
-    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+def html_a_texto(html: str) -> str:
+    return BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+
+
+def get_text(url: str, nocache: bool = False) -> str:
+    headers = dict(HEADERS)
+    params = None
+    if nocache:
+        # Evita que una caché intermedia nos sirva una copia vieja de la página.
+        headers["Cache-Control"] = "no-cache"
+        headers["Pragma"] = "no-cache"
+        params = {"nocache": int(datetime.now().timestamp())}
+    resp = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    return soup.get_text(" ", strip=True)
+    return html_a_texto(resp.text)
+
+
+def get_text_rendered(url: str) -> str:
+    """Abre la página en un Chromium real (Playwright), deja que el
+    JavaScript termine de cargar y devuelve el texto del DOM resultante.
+
+    Usamos page.content() (todo el DOM, también lo oculto en pestañas o
+    carruseles) y no inner_text() (solo lo visible), porque con inner_text
+    desaparecían el trimestre siguiente y los meses de la lista
+    "Contratos Siguientes" (comprobado el 14/11/2026)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page(user_agent=HEADERS["User-Agent"], locale="es-ES")
+            page.goto(url, wait_until="networkidle", timeout=60_000)
+            html = page.content()
+        finally:
+            browser.close()
+    return html_a_texto(html)
+
+
+def guardar_debug(nombre: str, fecha_iso: str, sufijo: str, texto: str):
+    """Guarda el texto crudo que vio el scraper en data/debug/, para poder
+    comprobar a posteriori qué mostraba la web en el momento de la lectura."""
+    try:
+        carpeta = os.path.join(DATA_DIR, "debug")
+        os.makedirs(carpeta, exist_ok=True)
+        with open(os.path.join(carpeta, f"{nombre}_{fecha_iso}_{sufijo}.txt"), "w", encoding="utf-8") as f:
+            f.write(texto)
+    except Exception as e:
+        print(f"[AVISO] No se pudo guardar el debug de {nombre} ({sufijo}): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +222,77 @@ def trimestre_label(fecha, offset: int) -> str:
     return f"Q{q}-{y % 100:02d}"
 
 
+OMIP_URL = "https://www.omip.pt/es/plazo-hoy"
+
+
 def scrape_omip() -> dict:
-    url = "https://www.omip.pt/es/plazo-hoy"
-    text = get_text(url)
+    """Lee OMIP de dos formas y se queda con la buena:
+
+    - "renderizado": Chromium real (Playwright), igual que lo ve una persona
+      en el navegador. Es la fuente principal.
+    - "plano": el HTML inicial con requests. Solo respaldo (si Chromium
+      falla) y para comparar: si YR-27 no coincide entre ambos, se avisa en
+      el log con "DIFERENCIA plano vs renderizado".
+
+    El texto crudo de cada modo se guarda en data/debug/."""
+    fecha_iso = datetime.now(MADRID_TZ).date().isoformat()
+
+    texto_plano, error_plano = None, None
+    try:
+        texto_plano = get_text(OMIP_URL, nocache=True)
+        guardar_debug("omip", fecha_iso, "plano", texto_plano)
+    except Exception as e:
+        error_plano = str(e)
+        print(f"[AVISO] OMIP: fallo leyendo el HTML plano: {e}")
+
+    texto_rend, error_rend = None, None
+    try:
+        texto_rend = get_text_rendered(OMIP_URL)
+        guardar_debug("omip", fecha_iso, "renderizado", texto_rend)
+    except Exception as e:
+        error_rend = str(e)
+        print(f"[AVISO] OMIP: fallo leyendo con Chromium (Playwright): {e}")
+
+    datos_plano = parse_omip_text(texto_plano) if texto_plano else None
+    datos_rend = parse_omip_text(texto_rend) if texto_rend else None
+
+    if datos_rend and datos_rend.get("yr_27") is not None:
+        datos, modo = datos_rend, "renderizado"
+    elif datos_plano:
+        datos, modo = datos_plano, "plano (respaldo)"
+    elif datos_rend:
+        datos, modo = datos_rend, "renderizado"
+    else:
+        raise RuntimeError(f"OMIP ilegible. plano: {error_plano} | renderizado: {error_rend}")
+
+    print(f"[OMIP] modo={modo} fecha_precios={datos.get('fecha_precios')} yr_27={datos.get('yr_27')}")
+    if datos_plano and datos_rend:
+        a, b = datos_plano.get("yr_27"), datos_rend.get("yr_27")
+        if a != b or datos_plano.get("fecha_precios") != datos_rend.get("fecha_precios"):
+            print(
+                f"[OMIP] DIFERENCIA plano vs renderizado: "
+                f"plano yr_27={a} ({datos_plano.get('fecha_precios')}) | "
+                f"renderizado yr_27={b} ({datos_rend.get('fecha_precios')})"
+            )
+        else:
+            print("[OMIP] plano y renderizado coinciden")
+
+    datos["modo_lectura"] = modo
+    datos["yr_27_plano"] = datos_plano.get("yr_27") if datos_plano else None
+    datos["yr_27_renderizado"] = datos_rend.get("yr_27") if datos_rend else None
+    return datos
+
+
+def parse_omip_text(text: str) -> dict:
+    url = OMIP_URL
+
+    # Fecha real de los precios. La tabla "Power Futures Reference Prices"
+    # dice "... Spain Power Base Futures Year Contract, for date AAAA-MM-DD";
+    # como respaldo, el pie "Precios en / Prices at AAAA-MM-DD".
+    m_fecha = re.search(
+        r"Settlement Price for Spain Power Base Futures \w+ Contract, for date (\d{4}-\d{2}-\d{2})", text
+    ) or re.search(r"(?:Precios en|Prices at)\s*(\d{4}-\d{2}-\d{2})", text)
+    fecha_precios = m_fecha.group(1) if m_fecha else None
 
     # Nos quedamos solo con el bloque de electricidad España (FTB), que es el
     # primero de la página, antes de que empiece el bloque de Portugal (PTEL BASE).
@@ -234,6 +345,7 @@ def scrape_omip() -> dict:
 
     return {
         "fuente": "OMIP",
+        "fecha_precios": fecha_precios,  # día real de los precios (AAAA-MM-DD) según la web
         "spel_base_spot": spel_base_spot,
         "yr_27": yr_27,  # equivalente a "Cal-27"
         "yr_28": yr_28,  # equivalente a "Cal-28"
@@ -476,15 +588,42 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
     # mientras que el "Power Spot Indexes" (spel_base_spot) sigue
     # actualizándose con normalidad — por eso vigilar el spot no detectaba
     # nada. YR-27 es un buen indicador porque cambia prácticamente cada día.
+    #
+    # Actualización 14/11/2026: el criterio principal es ahora la FECHA REAL
+    # de los precios que publica la propia web (fecha_precios). Si es
+    # anterior al último día laborable previo a hoy, los datos están
+    # desfasados. Fines de semana y lunes es normal ver los del viernes.
+    # Solo si no hay fecha (y en día laborable) se usa el criterio antiguo de
+    # "YR-27 igual N días seguidos". El texto ya no culpa a OMIP: no sabemos
+    # si el desfase es de su web o de nuestra lectura.
     yr_27_hoy = omip.get("yr_27")
-    dias_congelado = contar_dias_consecutivos_iguales(historico, "OMIP", "yr_27", yr_27_hoy, fecha_iso)
+    hoy_fecha = datetime.fromisoformat(fecha_iso).date()
+    ultimo_laborable = hoy_fecha - timedelta(days=1)
+    while ultimo_laborable.weekday() >= 5:
+        ultimo_laborable -= timedelta(days=1)
+
     aviso_omip = None
-    if dias_congelado >= DIAS_CONGELADO_AVISO:
-        aviso_omip = (
-            f"⚠️ Los futuros de OMIP (YR-27, YR-28, trimestres y meses) llevan {dias_congelado} "
-            f"días seguidos sin cambiar — probable fallo en la tabla de 'Power Futures Reference "
-            f"Prices' de OMIP (el spot sí se actualiza con normalidad), no en el scraper"
-        )
+    fecha_precios = omip.get("fecha_precios")
+    if fecha_precios:
+        try:
+            fp = datetime.fromisoformat(fecha_precios).date()
+        except ValueError:
+            fp = None
+        if fp and fp < ultimo_laborable:
+            aviso_omip = (
+                f"⚠️ Los futuros de OMIP (YR-27, YR-28, trimestres y meses) corresponden al "
+                f"{fp.strftime('%d/%m/%Y')}, no al último día de mercado "
+                f"({ultimo_laborable.strftime('%d/%m/%Y')}). Tómalos con cautela."
+            )
+    elif hoy_fecha.weekday() < 5:
+        dias_congelado = contar_dias_consecutivos_iguales(historico, "OMIP", "yr_27", yr_27_hoy, fecha_iso)
+        if dias_congelado >= DIAS_CONGELADO_AVISO:
+            aviso_omip = (
+                f"⚠️ Los futuros de OMIP (YR-27, YR-28, trimestres y meses) llevan {dias_congelado} "
+                f"días seguidos sin cambiar y la web no indica la fecha de los precios. "
+                f"Tómalos con cautela."
+            )
+    if aviso_omip:
         print(f"[AVISO] {aviso_omip}")
 
     agregar("OMIP", "spel_base_spot", omip.get("spel_base_spot"))
@@ -496,7 +635,6 @@ def construir_filas(resultado_fuentes: dict, historico: dict, fecha_iso: str) ->
     # mantener fijo un trimestre para siempre. Calculamos las etiquetas aquí
     # de forma independiente (no desde "omip") para que el nombre de la
     # fila salga bien aunque el scraping de OMIP haya fallado del todo ese día.
-    hoy_fecha = datetime.fromisoformat(fecha_iso).date()
     trimestre_frente_label = trimestre_label(hoy_fecha, 1)
     trimestre_siguiente_label = trimestre_label(hoy_fecha, 2)
     agregar("OMIP", f"trimestre_{trimestre_frente_label}", omip.get("trimestre_frente_precio"))

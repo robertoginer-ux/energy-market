@@ -3,7 +3,7 @@ name: Scraping diario de mercados energéticos
 on:
   # Se elimina el "schedule" de GitHub: ahora el único disparador diario es
   # cron-job.org, que llama a este mismo workflow_dispatch por API a las
-  # 7:05h Madrid. Tener también el cron interno de GitHub causaba envíos
+  # 7:45h Madrid. Tener también el cron interno de GitHub causaba envíos
   # duplicados, porque cualquier disparo por workflow_dispatch fuerza la
   # ejecución sin comprobar si ya se hizo hoy (ver FORCE_RUN más abajo).
   workflow_dispatch:       # permite lanzarlo manualmente desde la pestaña Actions, o vía API (cron-job.org)
@@ -25,6 +25,11 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
+
+      - name: Instalar Chromium para Playwright (lectura de OMIP)
+        # Si falla, el scraper sigue funcionando: OMIP se lee del HTML plano.
+        continue-on-error: true
+        run: python -m playwright install --with-deps chromium
 
       - name: Ejecutar scraper
         env:
