@@ -51,14 +51,15 @@ DESTINATARIOS = [
 
 # Imágenes integradas: (Content-ID, fichero en assets/)
 IMAGENES = {
+    "fondo_exterior": "fondo_exterior.png",  # #0A0020, fondo de todo el email
+    "fondo_email": "fondo_email.png",        # #100030, caja central
     "logo": "logo.png",
     "constantine": "constantine_growth.png",  # pose "growth": junto a un gráfico
 }
 
 # --- Tokens Coral (OE Web - Dark) -------------------------------------------
-# Colores sólidos (sin rgba). Cada fondo se pinta también como background-image
-# (ver fondo()): el modo oscuro de Outlook (Mac/iOS) aclara los background-color
-# oscuros y el email se veía "lavado"; las imágenes de fondo no las toca.
+# Colores sólidos (sin rgba). El fondo del email lleva además una imagen del
+# mismo color (ver fondo()): el modo oscuro de Outlook aclara los colores de fondo.
 NOCHE = "#0A0020"         # fondo exterior (más oscuro que Siphon)
 SIPHON = "#100030"        # Background/Base/900 — fondo del email
 HEMO = "#180048"          # Background/Base/500 — tablas
@@ -77,9 +78,10 @@ FONT = "'Montserrat', Arial, Helvetica, sans-serif"
 NUM = "font-variant-numeric:tabular-nums;"
 
 
-def fondo(color: str) -> str:
-    """Fondo sólido que los clientes en modo oscuro no recolorean."""
-    return f"background-color:{color};background-image:linear-gradient({color},{color});"
+def fondo(color: str, imagen: str) -> str:
+    """Fondo del email: color + imagen del mismo color. Outlook en modo oscuro
+    aclara los colores de fondo, pero no toca las imágenes."""
+    return f"background-color:{color};background-image:url('{imagen}');background-repeat:repeat;"
 
 MESES = {"Jan": "Ene", "Feb": "Feb", "Mar": "Mar", "Apr": "Abr", "May": "May", "Jun": "Jun",
          "Jul": "Jul", "Aug": "Ago", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dic"}
@@ -134,7 +136,7 @@ def kpi(titulo: str, fila: dict, unidad: str, meta: str) -> str:
     valor = fmt_numero(fila.get("valor"))
     return f"""
     <td class="kpi" width="33%" valign="top" style="padding:0 4px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BLUEBERRY}" style="{fondo(BLUEBERRY)}border-radius:12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BLUEBERRY}" style="background:{BLUEBERRY};border-radius:12px;">
         <tr><td class="kpi-in" style="padding:14px 14px 12px 14px;font-family:{FONT};">
           <div style="color:{HAZE};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">{titulo}</div>
           <div class="kpi-val" style="color:{ICE};font-size:24px;font-weight:700;line-height:1.2;margin-top:6px;{NUM}white-space:nowrap;">{valor}</div>
@@ -169,7 +171,7 @@ def seccion(titulo: str, meta: str, filas_html: str, aviso: str = None) -> str:
     if aviso:
         aviso_html = f"""
     <tr><td style="padding:0 24px 8px 24px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{WARN_BG}" style="{fondo(WARN_BG)}border:1px solid {WARN_BORDER};border-radius:12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{WARN_BG}" style="background:{WARN_BG};border:1px solid {WARN_BORDER};border-radius:12px;">
         <tr><td style="padding:10px 14px;font-family:{FONT};color:{WARN_TXT};font-size:13px;line-height:1.45;">{aviso.replace('⚠️ ', '')}</td></tr>
       </table></td></tr>"""
     return f"""
@@ -178,7 +180,7 @@ def seccion(titulo: str, meta: str, filas_html: str, aviso: str = None) -> str:
       <div style="font-family:{FONT};color:{HAZE};font-size:12px;margin-top:2px;">{meta}</div></td></tr>
     {aviso_html}
     <tr><td style="padding:0 24px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{HEMO}" style="{fondo(HEMO)}border:2px solid {INK};border-radius:12px;table-layout:fixed;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{HEMO}" style="background:{HEMO};border:2px solid {INK};border-radius:12px;table-layout:fixed;">
         {filas_html}
       </table></td></tr>"""
 
@@ -277,10 +279,10 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
     .kpi-meta {{ font-size:10px !important; }}
   }}
 </style></head>
-<body style="margin:0;padding:0;{fondo(NOCHE)}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" style="{fondo(NOCHE)}">
+<body style="margin:0;padding:0;{fondo(NOCHE, src['fondo_exterior'])}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" background="{src['fondo_exterior']}" style="{fondo(NOCHE, src['fondo_exterior'])}">
 <tr><td align="center" style="padding:24px 8px;">
-  <table role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" style="max-width:640px;width:100%;{fondo(SIPHON)}border-radius:16px;">
+  <table role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" background="{src['fondo_email']}" style="max-width:640px;width:100%;{fondo(SIPHON, src['fondo_email'])}border-radius:16px;">
     <tr><td style="padding:24px 24px 0 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
         <td><img src="{src['logo']}" alt="octopus energy" height="24" style="height:24px;width:auto;display:block;border:0;"></td>
