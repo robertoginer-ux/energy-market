@@ -185,6 +185,27 @@ def seccion(titulo: str, meta: str, filas_html: str, aviso: str = None) -> str:
       </table></td></tr>"""
 
 
+def muestra_fondos(src) -> str:
+    """TEMPORAL (diagnóstico 14/11): franjas con distintas técnicas de fondo."""
+    def franja(letra, txt, attrs, style, color_txt="#FFFFFF"):
+        return (f'<tr><td {attrs} style="{style}padding:12px 16px;font-family:Arial;font-size:14px;'
+                f'font-weight:700;color:{color_txt};">{letra} · {txt}</td></tr>')
+    filas = [
+        franja("A", "actual: bgcolor + estilo #0A0020", 'bgcolor="#0A0020"', "background-color:#0A0020;"),
+        franja("B", "negro #000000", 'bgcolor="#000000"', "background-color:#000000;"),
+        franja("C", "gris #1E1E1E", 'bgcolor="#1E1E1E"', "background-color:#1E1E1E;"),
+        franja("D", "solo estilo, sin bgcolor #0A0020", "", "background-color:#0A0020;"),
+        franja("E", "sombra interior #0A0020", "", "box-shadow:inset 0 0 0 2000px #0A0020;"),
+        franja("F", "borde grueso #0A0020", "", "border-left:600px solid #0A0020;padding-left:0;"),
+        franja("G", "lavanda claro #E6E0F8", 'bgcolor="#E6E0F8"', "background-color:#E6E0F8;", "#100030"),
+    ]
+    img = (f'<tr><td style="padding:0;"><img src="{src["fondo_exterior"]}" width="600" height="40" '
+           f'style="display:block;width:100%;height:40px;border:0;" alt=""></td></tr>'
+           f'<tr><td style="font-family:Arial;font-size:12px;color:#FFFFFF;padding:4px 16px 12px;">H · franja de arriba = imagen #0A0020</td></tr>')
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:0 auto 16px;">'
+            + "".join(filas) + img + '</table>')
+
+
 def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
     """src_imagenes: {"logo": src, "constantine": src}. Por defecto 'cid:…'
     (imágenes adjuntas al email); para previsualizar se pasan data: URIs."""
@@ -290,6 +311,7 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
 <body class="bg-ext" style="margin:0;padding:0;{fondo(NOCHE, src['fondo_exterior'])}">
 <table class="bg-ext" role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" background="{src['fondo_exterior']}" style="{fondo(NOCHE, src['fondo_exterior'])}">
 <tr><td align="center" style="padding:24px 8px;">
+  {muestra_fondos(src) if os.environ.get("MUESTRA_FONDOS") == "1" else ""}
   <table class="bg-email" role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" background="{src['fondo_email']}" style="max-width:640px;width:100%;{fondo(SIPHON, src['fondo_email'])}border-radius:16px;">
     <tr><td style="padding:24px 24px 0 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -336,7 +358,10 @@ def enviar(html: str, fecha_iso: str):
     msg = MIMEMultipart("related")
     msg["Subject"] = f"Radar de mercados energéticos – {fecha_fmt}"
     msg["From"] = GMAIL_USER
-    msg["To"] = ", ".join(DESTINATARIOS)
+    # SOLO_A_MI=1 (input del workflow "Reenviar email de un día"): pruebas solo
+    # al remitente, sin tocar la lista DESTINATARIOS.
+    destinatarios = [GMAIL_USER] if os.environ.get("SOLO_A_MI") == "1" else DESTINATARIOS
+    msg["To"] = ", ".join(destinatarios)
     msg.attach(MIMEText(html, "html", "utf-8"))
     for cid, fichero in IMAGENES.items():
         with open(os.path.join(ASSETS_DIR, fichero), "rb") as f:
@@ -347,8 +372,8 @@ def enviar(html: str, fecha_iso: str):
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, DESTINATARIOS, msg.as_string())
-    print(f"[OK] Email enviado desde {GMAIL_USER} a {', '.join(DESTINATARIOS)}")
+        server.sendmail(GMAIL_USER, destinatarios, msg.as_string())
+    print(f"[OK] Email enviado desde {GMAIL_USER} a {', '.join(destinatarios)}")
 
 
 def src_data_uri() -> dict:

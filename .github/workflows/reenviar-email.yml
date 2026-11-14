@@ -3,13 +3,21 @@ name: Reenviar email de un día
 # Solo envía el email a partir del snapshot ya guardado en data/AAAA-MM-DD.json.
 # No vuelve a scrapear, no toca el Google Sheet ni hace commit (así no se
 # duplican filas en history.csv). Útil si el run diario falló antes del email.
-# OJO: envía a la lista completa de DESTINATARIOS de send_email.py.
+# Por defecto envía SOLO al remitente (prueba); desmarcar solo_a_mi para la lista completa.
 on:
   workflow_dispatch:
     inputs:
       fecha:
         description: "Fecha del snapshot a enviar (AAAA-MM-DD)"
         required: true
+      solo_a_mi:
+        description: "Enviar solo al remitente (prueba), no a la lista"
+        type: boolean
+        default: true
+      muestra_fondos:
+        description: "TEMPORAL: añadir muestras de fondo (diagnóstico)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,4 +45,6 @@ jobs:
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           FECHA: ${{ inputs.fecha }}
+          SOLO_A_MI: ${{ inputs.solo_a_mi && '1' || '0' }}
+          MUESTRA_FONDOS: ${{ inputs.muestra_fondos && '1' || '0' }}
         run: python send_email.py "$FECHA"
