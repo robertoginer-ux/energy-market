@@ -56,9 +56,12 @@ IMAGENES = {
 }
 
 # --- Tokens Coral (OE Web - Dark) -------------------------------------------
-# Colores sólidos (sin rgba ni degradados): Gmail y Outlook los respetan mejor.
-SIPHON = "#100030"        # Background/Base/900 — fondo exterior
-HEMO = "#180048"          # Background/Base/500 — fondo del email y tablas
+# Colores sólidos (sin rgba). Cada fondo se pinta también como background-image
+# (ver fondo()): el modo oscuro de Outlook (Mac/iOS) aclara los background-color
+# oscuros y el email se veía "lavado"; las imágenes de fondo no las toca.
+NOCHE = "#0A0020"         # fondo exterior (más oscuro que Siphon)
+SIPHON = "#100030"        # Background/Base/900 — fondo del email
+HEMO = "#180048"          # Background/Base/500 — tablas
 BLUEBERRY = "#2D1A83"     # Background/Secondary/900 — tarjetas de resumen
 INK = "#5840FF"           # Background/Secondary/500 — contorno de tablas (2px)
 ICE = "#F0FFFF"           # Contents nivel 1 — texto principal y cifras
@@ -72,6 +75,11 @@ WARN_TXT = "#FFA26B"      # Warning, contenido sobre /10
 ROW_LINE = "#2A1466"      # separador entre filas
 FONT = "'Montserrat', Arial, Helvetica, sans-serif"
 NUM = "font-variant-numeric:tabular-nums;"
+
+
+def fondo(color: str) -> str:
+    """Fondo sólido que los clientes en modo oscuro no recolorean."""
+    return f"background-color:{color};background-image:linear-gradient({color},{color});"
 
 MESES = {"Jan": "Ene", "Feb": "Feb", "Mar": "Mar", "Apr": "Abr", "May": "May", "Jun": "Jun",
          "Jul": "Jul", "Aug": "Ago", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dic"}
@@ -126,7 +134,7 @@ def kpi(titulo: str, fila: dict, unidad: str, meta: str) -> str:
     valor = fmt_numero(fila.get("valor"))
     return f"""
     <td class="kpi" width="33%" valign="top" style="padding:0 4px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BLUEBERRY}" style="background:{BLUEBERRY};border-radius:12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BLUEBERRY}" style="{fondo(BLUEBERRY)}border-radius:12px;">
         <tr><td class="kpi-in" style="padding:14px 14px 12px 14px;font-family:{FONT};">
           <div style="color:{HAZE};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">{titulo}</div>
           <div class="kpi-val" style="color:{ICE};font-size:24px;font-weight:700;line-height:1.2;margin-top:6px;{NUM}white-space:nowrap;">{valor}</div>
@@ -161,7 +169,7 @@ def seccion(titulo: str, meta: str, filas_html: str, aviso: str = None) -> str:
     if aviso:
         aviso_html = f"""
     <tr><td style="padding:0 24px 8px 24px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{WARN_BG}" style="background:{WARN_BG};border:1px solid {WARN_BORDER};border-radius:12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{WARN_BG}" style="{fondo(WARN_BG)}border:1px solid {WARN_BORDER};border-radius:12px;">
         <tr><td style="padding:10px 14px;font-family:{FONT};color:{WARN_TXT};font-size:13px;line-height:1.45;">{aviso.replace('⚠️ ', '')}</td></tr>
       </table></td></tr>"""
     return f"""
@@ -170,7 +178,7 @@ def seccion(titulo: str, meta: str, filas_html: str, aviso: str = None) -> str:
       <div style="font-family:{FONT};color:{HAZE};font-size:12px;margin-top:2px;">{meta}</div></td></tr>
     {aviso_html}
     <tr><td style="padding:0 24px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{HEMO}" style="background:{HEMO};border:2px solid {INK};border-radius:12px;table-layout:fixed;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{HEMO}" style="{fondo(HEMO)}border:2px solid {INK};border-radius:12px;table-layout:fixed;">
         {filas_html}
       </table></td></tr>"""
 
@@ -257,10 +265,11 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&display=swap" rel="stylesheet">
 <title>Radar de mercados</title>
 <style>
+  :root {{ color-scheme: light dark; supported-color-schemes: light dark; }}
   @media (max-width:480px) {{
     .kpi {{ padding:0 3px !important; }}
     .kpi-in {{ padding:12px 10px 10px 10px !important; }}
@@ -268,10 +277,10 @@ def construir_html(resultado: dict, src_imagenes: dict = None) -> str:
     .kpi-meta {{ font-size:10px !important; }}
   }}
 </style></head>
-<body style="margin:0;padding:0;background:{SIPHON};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" style="background:{SIPHON};">
+<body style="margin:0;padding:0;{fondo(NOCHE)}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{NOCHE}" style="{fondo(NOCHE)}">
 <tr><td align="center" style="padding:24px 8px;">
-  <table role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{HEMO}" style="max-width:640px;width:100%;background:{HEMO};border-radius:16px;">
+  <table role="presentation" width="640" cellpadding="0" cellspacing="0" bgcolor="{SIPHON}" style="max-width:640px;width:100%;{fondo(SIPHON)}border-radius:16px;">
     <tr><td style="padding:24px 24px 0 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
         <td><img src="{src['logo']}" alt="octopus energy" height="24" style="height:24px;width:auto;display:block;border:0;"></td>
