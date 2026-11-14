@@ -39,6 +39,15 @@ DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
 MARGEN_COLUMNAS = 60
 
 
+# Reintentos de cada llamada a la API de Google (añadido 14/11/2026). Ese día
+# el paso falló por un TimeoutError puntual de la conexión con Google y, al
+# pararse el workflow, no salió el email. La librería reintenta sola los
+# timeouts, errores de conexión y respuestas 429/5xx, con esperas crecientes
+# (~1, 2, 4, 8, 16 s). Todas las escrituras son idempotentes (mismas celdas,
+# mismos valores), así que repetirlas es seguro.
+REINTENTOS_API = 5
+
+
 def col_to_letter(idx: int) -> str:
     """0 -> 'A', 1 -> 'B', ..., 25 -> 'Z', 26 -> 'AA', ..."""
     idx += 1
@@ -97,7 +106,7 @@ def asegurar_columnas_suficientes(service, sheet_id: int, columnas_necesarias: i
                 }
             ]
         },
-    ).execute()
+    ).execute(num_retries=REINTENTOS_API)
     print(f"[OK] Cuadrícula ampliada en {anadir} columnas (tenía {columnas_actuales}, hacían falta {columnas_necesarias})")
 
 
@@ -120,7 +129,7 @@ def main():
 
     service = get_service()
 
-    meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+    meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute(num_retries=REINTENTOS_API)
     hoja_props = meta["sheets"][0]["properties"]
     sheet_title = hoja_props["title"]
     sheet_id = hoja_props["sheetId"]
@@ -131,7 +140,7 @@ def main():
         service.spreadsheets()
         .values()
         .get(spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_title}'!A1:ZZ{filas_actuales}")
-        .execute()
+        .execute(num_retries=REINTENTOS_API)
     )
     grid = result.get("values", [])
 
@@ -214,7 +223,7 @@ def main():
     service.spreadsheets().values().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
         body={"valueInputOption": "RAW", "data": updates},
-    ).execute()
+    ).execute(num_retries=REINTENTOS_API)
     print(f"[OK] {len(updates)} celdas actualizadas en el Google Sheet para el {fecha_ddmmyyyy}")
 
 
